@@ -27,7 +27,7 @@ export class ContentReader {
     }
 
     public readUint32(): number {
-        const v = this.view.getInt32(this.Position, true);
+        const v = this.view.getUint32(this.Position, true);
         this.Position += 4;
         return v;
     }
