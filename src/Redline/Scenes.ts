@@ -23,6 +23,7 @@ export class RedlineRenderer implements SceneGfx {
 
     private renderHelper: GfxRenderHelper;
     private renderInstList = new GfxRenderInstList();
+    private skyRenderInstList = new GfxRenderInstList();
 
     private opaqueShaderProgram: GfxProgram;
     private sampler: GfxSampler;
@@ -34,6 +35,7 @@ export class RedlineRenderer implements SceneGfx {
         public textures: TextureCache,
         private model_table: string[],
         private models: Map<string, Geo>,
+        private skybox: string,
         private to_render: rust.RedlineEntity[],
     ) {
         this.renderHelper = new GfxRenderHelper(sceneContext.device, sceneContext);
@@ -92,32 +94,15 @@ export class RedlineRenderer implements SceneGfx {
         this.textureHolder.onnewtextures();
     }
 
-    private renderModel(model: Geo, entity: rust.RedlineEntity): void {
+    private renderModel(inst: GfxRenderInstList, model: Geo, pos: mat4): void {
         for (const mesh of model.meshes) {
             const tex = this.textures.get(mesh.texture)?.gfxTexture;
             if (tex == undefined) continue; // TODO (vertex colored)
             const renderInst = this.renderHelper.renderInstManager.newRenderInst();
             renderInst.setGfxProgram(this.opaqueShaderProgram);
 
-            const scale = vec3.fromValues(100, 100, 100);
             const position = renderInst.allocateUniformBufferF32(OpaqueShader.ub_Position, 12);
-            const mat = mat4.create();
-
-            // Compute position matrix
-            const r_position = entity.pos();
-            const r_forward = entity.forward();
-            const r_up = entity.up();
-            const pos = vec3.create()
-            vec3.mul(pos, vec3.fromValues(-r_position[0], r_position[1], r_position[2]), scale);
-
-            const forward = vec3.fromValues(r_forward[0], r_forward[1], r_forward[2]);
-            const up = vec3.fromValues(r_up[0], r_up[1], r_up[2]);
-
-            mat4.lookAt(mat, vec3.create(), forward, up);
-            mat4.translate(mat, mat, pos);
-            mat4.scale(mat, mat, scale);
-
-            fillMatrix4x3(position, 0, mat);
+            fillMatrix4x3(position, 0, pos);
 
             renderInst.setSamplerBindings(0, [
                 {
@@ -133,8 +118,43 @@ export class RedlineRenderer implements SceneGfx {
             );
 
             renderInst.setDrawCount(mesh.indexCount * 3);
-            this.renderInstList.submitRenderInst(renderInst);
+            inst.submitRenderInst(renderInst);
         }
+    }
+
+    private renderEntity(inst: GfxRenderInstList, model: Geo, entity: rust.RedlineEntity) {
+        const scale = vec3.fromValues(100, 100, 100);
+        const mat = mat4.create();
+
+        // Compute position matrix
+        const r_position = entity.pos();
+        const r_forward = entity.forward();
+        const r_up = entity.up();
+        const pos = vec3.create()
+        vec3.mul(pos, vec3.fromValues(-r_position[0], r_position[1], r_position[2]), scale);
+
+        const forward = vec3.fromValues(r_forward[0], r_forward[1], r_forward[2]);
+        const up = vec3.fromValues(r_up[0], r_up[1], r_up[2]);
+
+        mat4.lookAt(mat, vec3.create(), forward, up);
+        mat4.translate(mat, mat, pos);
+        mat4.scale(mat, mat, scale);
+
+        this.renderModel(inst, model, mat);
+    }
+
+    private renderSky(pos: vec3) {
+        const model = this.models.get(this.skybox.toLowerCase() + ".sky");
+        if (!model) {
+            console.log(this.skybox);
+            return;
+        }
+
+        const mat = mat4.create();
+        mat4.translate(mat, mat, pos);
+        mat4.scale(mat, mat, [100, 100, 100]);
+
+        this.renderModel(this.skyRenderInstList, model!, mat);
     }
 
     public render(device: GfxDevice, viewerInput: ViewerRenderInput): void {
@@ -150,9 +170,17 @@ export class RedlineRenderer implements SceneGfx {
             { numSamplers: 1, numUniformBuffers: 2 },
         ]);
 
+
+
         const data = template.allocateUniformBufferF32(OpaqueShader.ub_SceneParams, 16);
         let offs = 0;
+        const x = mat4.create();
         offs += fillMatrix4x4(data, offs, viewerInput.camera.clipFromWorldMatrix);
+
+        // TODO: It looks like these are script defined geometry
+        // const pos = vec3.create();
+        // mat4.getTranslation(pos, viewerInput.camera.worldMatrix);
+        // this.renderSky(pos);
 
         for (const entity of this.to_render) {
             const mdl = this.models.get(this.model_table[entity.model_idx]);
@@ -162,15 +190,28 @@ export class RedlineRenderer implements SceneGfx {
             }
             const model = mdl!;
 
-            this.renderModel(model, entity);
+            this.renderEntity(this.renderInstList, model, entity);
         }
 
         const builder = this.renderHelper.renderGraph.newGraphBuilder();
         const mainColorDesc = makeBackbufferDescSimple(GfxrAttachmentSlot.Color0, viewerInput, standardFullClearRenderPassDescriptor);
         const mainDepthDesc = makeBackbufferDescSimple(GfxrAttachmentSlot.DepthStencil, viewerInput, standardFullClearRenderPassDescriptor);
+        const skyDepthDesc = makeBackbufferDescSimple(GfxrAttachmentSlot.DepthStencil, viewerInput, standardFullClearRenderPassDescriptor);
 
         const mainColorTargetID = builder.createRenderTargetID(mainColorDesc, 'Main Color');
         const mainDepthTargetID = builder.createRenderTargetID(mainDepthDesc, 'Main Depth');
+        const skyDepthTargetID = builder.createRenderTargetID(skyDepthDesc, 'Sky Depth');
+
+        builder.pushPass((pass) => {
+            pass.setDebugName("Sky");
+
+            pass.attachRenderTargetID(GfxrAttachmentSlot.Color0, mainColorTargetID);
+            pass.attachRenderTargetID(GfxrAttachmentSlot.DepthStencil, skyDepthTargetID);
+
+            pass.exec((passRenderer, _scope) => {
+                this.skyRenderInstList.drawOnPassRenderer(this.renderHelper.renderCache, passRenderer);
+            });
+        });
 
         builder.pushPass((pass) => {
             pass.setDebugName("Opaque Objects");
@@ -265,11 +306,13 @@ class RedlineSceneDesc implements SceneDesc {
             asset.free()
         }
 
+        const skybox = world.skybox();
+
         const to_render = world.list_entities();
 
         world.free();
 
-        return new RedlineRenderer(context, textures, asset_table, models, to_render);
+        return new RedlineRenderer(context, textures, asset_table, models, skybox, to_render);
     }
 }
 

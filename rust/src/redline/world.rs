@@ -525,6 +525,7 @@ impl World {
 
     pub fn skybox(&self) -> String {
         self.extended_header
+            .as_ref()
             .map(|x| x.skybox.clone())
             .unwrap_or_default()
     }
