@@ -1,6 +1,20 @@
 use deku::{ctx::Order, DekuError, DekuReader};
-
+mod geo;
 mod world;
+
+// Read null-terminated padded string
+fn read_padded_string<R: std::io::Read + std::io::Seek>(
+    reader: &mut deku::reader::Reader<R>,
+    len: usize,
+) -> Result<String, DekuError> {
+    let mut raw = vec![0u8; len];
+    reader.read_bytes(len, &mut raw, Order::Msb0)?;
+
+    Ok(
+        String::from_utf8_lossy(&raw.into_iter().take_while(|v| *v != 0).collect::<Vec<u8>>())
+            .to_string(),
+    )
+}
 
 // Read length-prefixed string
 fn read_len_string<R: std::io::Read + std::io::Seek>(
@@ -14,6 +28,12 @@ fn read_len_string<R: std::io::Read + std::io::Seek>(
     } else {
         Ok(String::new())
     }
+}
+
+fn read_len_string_opt<R: std::io::Read + std::io::Seek>(
+    reader: &mut deku::reader::Reader<R>,
+) -> Result<Option<String>, DekuError> {
+    Ok(Some(read_len_string(reader)?))
 }
 
 // Read a vec of above

@@ -1,7 +1,10 @@
+use deku::ctx::Order;
 use deku::{DekuContainerRead, DekuRead};
+use deku::{DekuError, DekuReader};
 use wasm_bindgen::prelude::*;
 
 use crate::redline::read_len_string;
+use crate::redline::read_len_string_opt;
 use crate::redline::read_len_string_vec;
 
 #[derive(DekuRead, Debug)]
@@ -95,6 +98,308 @@ struct Asset {
     name: String,
 }
 
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+struct Unknown7 {
+    #[deku(reader = "read_len_string(deku::reader)")]
+    str: String,
+    #[deku(cond = "version < 3")]
+    val: u32, // Why more data in old versions?
+}
+
+#[derive(DekuRead, Debug, Clone)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+#[wasm_bindgen(js_name = "RedlineEntity")]
+pub struct Model {
+    pub model_idx: u16,
+    pos: [f32; 3],
+    unk3: [f32; 3],
+    unk4: [f32; 3],
+    unk5: u16,
+    #[deku(cond = "version > 0x10")]
+    unk6: u16,
+    #[deku(cond = "version > 0x18")]
+    unk7: u16,
+    #[deku(cond = "version > 0x18")]
+    unk8: u8,
+    #[deku(cond = "version > 0x21")]
+    unk9: f32,
+    #[deku(cond = "version > 0x23")]
+    unk10: u32,
+}
+
+#[wasm_bindgen(js_class = "RedlineEntity")]
+impl Model {
+    pub fn pos(&self) -> Vec<f32> {
+        Vec::from(self.pos)
+    }
+    pub fn forward(&self) -> Vec<f32> {
+        Vec::from(self.unk3)
+    }
+    pub fn up(&self) -> Vec<f32> {
+        Vec::from(self.unk4)
+    }
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity4 {
+    unk1: [f32; 3],
+    unk2: u16,
+    #[deku(cond = "version < 0x21")]
+    unk3: Option<[f32; 3]>,
+    #[deku(cond = "version > 0x20")]
+    unk4: Option<[f32; 10]>,
+
+    unk5: u16,
+    #[deku(cond = "version > 0xc")]
+    unk6: u16,
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity5Ext {
+    unk1: [u16; 6], // Not really an array
+    #[deku(cond = "version > 0x16")]
+    unk2: u8,
+    #[deku(cond = "version > 0x16")]
+    unk3: [f32; 3],
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity5 {
+    unk1: [f32; 3],
+    unk2: u16,
+    #[deku(cond = "version < 0x14")]
+    unk3: u16,
+    #[deku(cond = "version > 0x13", ctx = "version")]
+    unk4: Option<Entity5Ext>,
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity6 {
+    unk1: [f32; 3],
+    unk2: [u16; 5], // Not really array
+    unk3: u8,
+    unk4: u8,
+    unk5: u16,
+    unk6: u8,
+    unk7: u8,
+    unk8: u8,
+    unk9: u8,
+    #[deku(cond = "version > 0xf")]
+    unk10: f32,
+    #[deku(cond = "version > 0xf")]
+    unk11: f32,
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity1 {
+    unk1: u16,
+    unk2: [f32; 3],
+    unk3: [f32; 3],
+    unk4: [f32; 3],
+    unk5: u16,
+    #[deku(cond = "version > 0x19")]
+    unk6: u16,
+    #[deku(cond = "version > 0x19")]
+    unk7: u8,
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity2Ext {
+    unk1: u32,
+    unk2: u32,
+    #[deku(cond = "version < 0x24")]
+    unk3: u8,
+    #[deku(cond = "version > 0x23")]
+    unk4: u32,
+
+    unk5: u8,
+    unk6: u8,
+    unk7: u8,
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity2 {
+    unk1: [f32; 3],
+    unk2: u16,
+    unk3: u16,
+    unk4: u8,
+    #[deku(cond = "version > 0x15")]
+    unk5: u16,
+    #[deku(reader = "read_len_string(deku::reader)")]
+    unk6: String,
+    #[deku(reader = "read_len_string(deku::reader)")]
+    unk7: String,
+
+    #[deku(cond = "version > 8", reader = "read_len_string_opt(deku::reader)")]
+    unk8: Option<String>,
+    #[deku(cond = "version > 0x1b", reader = "read_len_string_opt(deku::reader)")]
+    unk9: Option<String>,
+    #[deku(cond = "version > 0x23", reader = "read_len_string_opt(deku::reader)")]
+    unk10: Option<String>,
+
+    #[deku(cond = "version > 0x22", ctx = "version")]
+    unk11: Option<Entity2Ext>,
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity3 {
+    unk1: [f32; 3],
+    unk2: u16,
+    unk3: u16,
+    unk4: u8,
+    #[deku(reader = "read_len_string(deku::reader)")]
+    unk5: String,
+    #[deku(cond = "version > 0x1c")]
+    unk6: u32,
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity8 {
+    unk1: [f32; 3],
+    unk2: u16,
+    unk3: u16,
+    #[deku(reader = "read_len_string(deku::reader)")]
+    unk4: String,
+
+    #[deku(cond = "version > 0xa")]
+    unk5: u16,
+    #[deku(cond = "version > 0xa")]
+    unk6: u16,
+
+    #[deku(cond = "version > 0x25")]
+    unk7: u16,
+    #[deku(cond = "version > 0x25")]
+    unk8: u16,
+    #[deku(cond = "version > 0x25")]
+    unk9: u16,
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity9 {
+    unk1: [f32; 3],
+    unk2: u16,
+    unk3: u16,
+    #[deku(reader = "read_len_string(deku::reader)")]
+    unk4: String,
+    #[deku(cond = "version > 0x24")]
+    unk5: u16,
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity12 {
+    unk1: [f32; 3],
+    unk2: u16,
+    #[deku(cond = "version < 0x21")]
+    unk3: [f32; 3],
+    #[deku(cond = "version > 0x20")]
+    unk4: [f32; 10],
+    unk5: u16,
+    #[deku(cond = "version > 0x26")]
+    unk6: u16,
+    #[deku(cond = "version > 0x27")]
+    unk7: f32,
+    #[deku(cond = "version > 0x27", reader = "read_len_string_opt(deku::reader)")]
+    unk8: Option<String>,
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity13 {
+    unk1: [f32; 3],
+    unk2: u16,
+    unk3: u16,
+    unk4: u16,
+    unk5: u16,
+    unk6: u16,
+    unk7: u16,
+    unk8: u16,
+    unk9: u32,
+    unk10: u16,
+}
+
+#[derive(Debug)]
+#[allow(unused)]
+pub enum WorldEntity {
+    Model(Model),
+    Unknown1(Entity1),
+    Unknown2(Entity2), // Enemy spawnpoints?
+    Unknown3(Entity3),
+    Unknown4(Entity4),
+    Unknown5(Entity5),
+    Unknown6(Entity6),
+    Unknown8(Entity8),
+    Unknown9(Entity9),
+    Unknown12(Entity12),
+    Unknown13(Entity13),
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+
+fn read_world_entity<R: std::io::Read + std::io::Seek>(
+    reader: &mut deku::reader::Reader<R>,
+    version: u32,
+) -> Result<Vec<WorldEntity>, DekuError> {
+    let mut out = vec![];
+    loop {
+        let mut tag = [0u8; 1];
+        reader.read_bytes_const(&mut tag, Order::Msb0)?;
+
+        // TODO: version < 6
+        log(&format!("Entity type: {}", tag[0]));
+        out.push(match tag[0] {
+            0x00 => WorldEntity::Model(Model::from_reader_with_ctx(reader, version)?),
+            0x01 => WorldEntity::Unknown1(Entity1::from_reader_with_ctx(reader, version)?),
+            0x02 => WorldEntity::Unknown2(Entity2::from_reader_with_ctx(reader, version)?),
+            0x03 => WorldEntity::Unknown3(Entity3::from_reader_with_ctx(reader, version)?),
+            0x04 => WorldEntity::Unknown4(Entity4::from_reader_with_ctx(reader, version)?),
+            0x05 => WorldEntity::Unknown5(Entity5::from_reader_with_ctx(reader, version)?),
+            0x06 => WorldEntity::Unknown6(Entity6::from_reader_with_ctx(reader, version)?),
+            0x08 => WorldEntity::Unknown8(Entity8::from_reader_with_ctx(reader, version)?),
+            0x09 => WorldEntity::Unknown9(Entity9::from_reader_with_ctx(reader, version)?),
+            0x0C => WorldEntity::Unknown12(Entity12::from_reader_with_ctx(reader, version)?),
+            0x0D => WorldEntity::Unknown13(Entity13::from_reader_with_ctx(reader, version)?),
+            0xFF => break, // End condition
+            _ => {
+                break;
+            } // TODO
+        })
+    }
+
+    log(&format!("Entities: {:#?}", out));
+
+    Ok(out)
+}
+
 // World read directly from disk
 #[derive(DekuRead, Debug)]
 #[wasm_bindgen(js_name = "RedlineWorld")]
@@ -139,6 +444,14 @@ pub struct World {
     asset_count: u32,
     #[deku(count = "*asset_count", ctx = "*version")]
     assets: Vec<Asset>,
+
+    unk7_count: u32,
+    #[deku(count = "*unk7_count", ctx = "*version")]
+    unk7: Vec<Unknown7>,
+
+    // Large list of unions. Likely all world entities
+    #[deku(reader = "read_world_entity(deku::reader, *version)")]
+    entities: Vec<WorldEntity>,
 }
 
 #[wasm_bindgen(js_class = "RedlineWorld")]
@@ -156,7 +469,22 @@ impl World {
     }
 
     /// Assets listed in the core asset block. This is not exhaustive.
-    pub fn list_assets(&self) -> Vec<String> {
-        self.assets.iter().map(|asset| asset.name.clone()).collect()
+    pub fn list_models(&self) -> Vec<String> {
+        self.assets
+            .iter()
+            //.filter(|asset| asset.kind == 0)
+            .map(|asset| format!("{}{}", asset.kind, asset.name.clone()))
+            .collect()
+    }
+
+    pub fn list_entities(&self) -> Vec<Model> {
+        let mut out = vec![];
+        for entity in &self.entities {
+            if let WorldEntity::Model(m) = entity {
+                out.push(m.clone());
+            }
+        }
+
+        out
     }
 }

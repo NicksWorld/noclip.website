@@ -76,7 +76,7 @@ function extractBgd(bgd_name: string): void {
     // Extract all entries
     for (const entry of entries) {
         const data = reader.readBytes(entry.size);
-        const dstPath = `${pathBaseOut}/${entry.filename}`;
+        const dstPath = `${pathBaseOut}/${entry.filename.toLowerCase()}`;
 
         mkdirSync(path.dirname(dstPath), { recursive: true });
         writeFileSync(dstPath, Buffer.from(data.copyToBuffer()));

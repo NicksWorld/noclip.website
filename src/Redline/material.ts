@@ -64,15 +64,16 @@ export class Texture {
             let mip_height = height >> i;
 
             let size = (bpp / 8) * mip_width * mip_height;
-            let slice = r.readSlice(size).createTypedArray(Uint8Array);
 
+            if (name == "railbtm2.tga") continue;
             let buffer = new Uint8Array(mip_width * mip_height * (bpp == 32 ? 4 : 3));
+            let slice = r.readSlice(size).createTypedArray(Uint8Array);
 
             for (let x = 0; x < mip_width; x++) {
                 for (let y = 0; y < mip_height; y++) {
                     let ry = mip_height - y - 1;
                     let offset = (bpp / 8) * ((ry * mip_width) + x);
-                    let out_offset = ((y * mip_width) + x) * (bpp == 32 ? 4 : 3);
+                    let out_offset = ((ry * mip_width) + x) * (bpp == 32 ? 4 : 3);
 
                     if (bpp == 8) {
                         const color = palette[slice[offset]];
@@ -99,5 +100,9 @@ export class Texture {
         this.gfxTexture = device.createTexture(desc);
         device.uploadTextureData(this.gfxTexture, 0, levels);
         device.setResourceName(this.gfxTexture, name);
+    }
+
+    public destroy(device: GfxDevice): void {
+        device.destroyTexture(this.gfxTexture);
     }
 }
