@@ -88,14 +88,15 @@ pub struct UnknownV39 {
     unk11: u32,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Clone)]
+#[wasm_bindgen(js_name = "RedlineAssetDef", getter_with_clone)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-struct Asset {
+pub struct Asset {
     #[deku(cond = "version > 1")]
-    kind: u8,
+    pub kind: u8,
     #[deku(reader = "read_len_string(deku::reader)")]
-    name: String,
+    pub name: String,
 }
 
 #[derive(DekuRead, Debug)]
@@ -199,6 +200,27 @@ pub struct Entity6 {
     unk10: f32,
     #[deku(cond = "version > 0xf")]
     unk11: f32,
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity7 {
+    unk1: [f32; 3],
+    unk2: u16,
+    unk3: u16,
+    #[deku(reader = "read_len_string(deku::reader)")]
+    unk4: String,
+    #[deku(cond = "version > 0x1a")]
+    unk5: u16,
+    #[deku(cond = "version > 0x21")]
+    unk6: u32,
+    #[deku(cond = "version > 0x25")]
+    unk7: u16,
+    #[deku(cond = "version > 0x25")]
+    unk8: u16,
+    #[deku(cond = "version > 0x25")]
+    unk9: u16,
 }
 
 #[derive(DekuRead, Debug)]
@@ -343,6 +365,19 @@ pub struct Entity13 {
     unk10: u16,
 }
 
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+pub struct Entity15 {
+    unk1: [f32; 3],
+    unk2: u16,
+    unk3: u16,
+    unk4: u16,
+    unk5: u8,
+    #[deku(reader = "read_len_string(deku::reader)")]
+    unk6: String,
+}
+
 #[derive(Debug)]
 #[allow(unused)]
 pub enum WorldEntity {
@@ -353,10 +388,12 @@ pub enum WorldEntity {
     Unknown4(Entity4),
     Unknown5(Entity5),
     Unknown6(Entity6),
+    Unknown7(Entity7),
     Unknown8(Entity8),
     Unknown9(Entity9),
     Unknown12(Entity12),
     Unknown13(Entity13),
+    Unknown15(Entity15),
 }
 
 #[wasm_bindgen]
@@ -384,10 +421,12 @@ fn read_world_entity<R: std::io::Read + std::io::Seek>(
             0x04 => WorldEntity::Unknown4(Entity4::from_reader_with_ctx(reader, version)?),
             0x05 => WorldEntity::Unknown5(Entity5::from_reader_with_ctx(reader, version)?),
             0x06 => WorldEntity::Unknown6(Entity6::from_reader_with_ctx(reader, version)?),
+            0x07 => WorldEntity::Unknown7(Entity7::from_reader_with_ctx(reader, version)?),
             0x08 => WorldEntity::Unknown8(Entity8::from_reader_with_ctx(reader, version)?),
             0x09 => WorldEntity::Unknown9(Entity9::from_reader_with_ctx(reader, version)?),
             0x0C => WorldEntity::Unknown12(Entity12::from_reader_with_ctx(reader, version)?),
             0x0D => WorldEntity::Unknown13(Entity13::from_reader_with_ctx(reader, version)?),
+            0x0F => WorldEntity::Unknown15(Entity15::from_reader_with_ctx(reader, version)?),
             0xFF => break, // End condition
             _ => {
                 break;
@@ -469,12 +508,8 @@ impl World {
     }
 
     /// Assets listed in the core asset block. This is not exhaustive.
-    pub fn list_models(&self) -> Vec<String> {
-        self.assets
-            .iter()
-            //.filter(|asset| asset.kind == 0)
-            .map(|asset| format!("{}{}", asset.kind, asset.name.clone()))
-            .collect()
+    pub fn list_assets(&self) -> Vec<Asset> {
+        self.assets.clone()
     }
 
     pub fn list_entities(&self) -> Vec<Model> {
@@ -486,5 +521,11 @@ impl World {
         }
 
         out
+    }
+
+    pub fn skybox(&self) -> String {
+        self.extended_header
+            .map(|x| x.skybox.clone())
+            .unwrap_or_default()
     }
 }
