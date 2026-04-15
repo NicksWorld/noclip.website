@@ -37,7 +37,7 @@ in vec2 v_TexCoord;
 void main() {
     gl_FragColor = texture(SAMPLER_2D(u_Texture), v_TexCoord.xy);
     // TODO: proper transparency
-    if(gl_FragColor.a < 0.05) {
+    if(gl_FragColor.a < 0.1) {
         discard;
     }
 }

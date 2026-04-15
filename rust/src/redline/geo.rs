@@ -19,8 +19,10 @@ struct Mesh {
     pub index_offset: u16,
     pub index_count: u16,
     // TODO: Export the render flags from here
-    unk2: u32,
-    unk3: u32,
+    pub render_flags: u8,
+    unk2: u8,
+    unk3: u16,
+    unk4: u32,
 }
 
 #[derive(DekuRead, Debug)]

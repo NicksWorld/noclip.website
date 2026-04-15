@@ -15,6 +15,7 @@ export type Mesh = {
     vertexCount: number,
     indexOffset: number,
     indexCount: number,
+    renderFlags: number,
 }
 
 export class Geo {
@@ -52,6 +53,7 @@ export class Geo {
                     vertexCount: m.vertex_count,
                     indexOffset: m.index_offset,
                     indexCount: m.index_count,
+                    renderFlags: m.render_flags,
                 }
             );
 

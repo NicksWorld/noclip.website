@@ -1,6 +1,6 @@
 
 import { rust } from "../rustlib.js";
-import { GfxDevice, GfxFormat, GfxInputLayout, GfxMipFilterMode, GfxProgram, GfxSampler, GfxTexFilterMode, GfxVertexBufferFrequency, GfxWrapMode } from "../gfx/platform/GfxPlatform";
+import { GfxAttachmentState, GfxBlendFactor, GfxBlendMode, GfxChannelWriteMask, GfxDevice, GfxFormat, GfxInputLayout, GfxMipFilterMode, GfxProgram, GfxSampler, GfxTexFilterMode, GfxVertexBufferFrequency, GfxWrapMode } from "../gfx/platform/GfxPlatform";
 import { SceneContext, SceneDesc, SceneGroup } from "../SceneBase";
 import { FakeTextureHolder } from "../TextureHolder";
 import { SceneGfx, ViewerRenderInput } from "../viewer";
@@ -18,12 +18,23 @@ import { OpaqueShader } from "./shaders";
 
 export const pathBase = `Redline`;
 
+class RedlineRenderInstList {
+    public opaque: GfxRenderInstList = new GfxRenderInstList();
+    public transparent: GfxRenderInstList = new GfxRenderInstList();
+}
+
+const attachmentStatesAdditive: GfxAttachmentState[] = [{
+    alphaBlendState: {blendMode: GfxBlendMode.Add, blendDstFactor: GfxBlendFactor.One, blendSrcFactor: GfxBlendFactor.SrcAlpha},
+    channelWriteMask: GfxChannelWriteMask.AllChannels,
+    rgbBlendState: {blendMode: GfxBlendMode.Add, blendDstFactor: GfxBlendFactor.OneMinusSrc, blendSrcFactor: GfxBlendFactor.SrcAlpha}
+}];
+
 export class RedlineRenderer implements SceneGfx {
     public textureHolder = new FakeTextureHolder([]);
 
     private renderHelper: GfxRenderHelper;
-    private renderInstList = new GfxRenderInstList();
-    private skyRenderInstList = new GfxRenderInstList();
+    private renderInstList = new RedlineRenderInstList();
+    private skyRenderInstList = new RedlineRenderInstList();
 
     private opaqueShaderProgram: GfxProgram;
     private sampler: GfxSampler;
@@ -94,12 +105,25 @@ export class RedlineRenderer implements SceneGfx {
         this.textureHolder.onnewtextures();
     }
 
-    private renderModel(inst: GfxRenderInstList, model: Geo, pos: mat4): void {
+    private renderModel(inst: RedlineRenderInstList, model: Geo, pos: mat4): void {
         for (const mesh of model.meshes) {
             const tex = this.textures.get(mesh.texture)?.gfxTexture;
             if (tex == undefined) continue; // TODO (vertex colored)
             const renderInst = this.renderHelper.renderInstManager.newRenderInst();
-            renderInst.setGfxProgram(this.opaqueShaderProgram);
+
+            let inst_list = inst.opaque;
+
+            // Determine correct shader program
+            if ((mesh.renderFlags & 0x01) != 0) {
+                renderInst.setGfxProgram(this.opaqueShaderProgram);
+                renderInst.setMegaStateFlags({
+                    depthWrite: false,
+                    attachmentsState: attachmentStatesAdditive,
+                });
+                inst_list = inst.transparent;
+            } else {
+                renderInst.setGfxProgram(this.opaqueShaderProgram);
+            }
 
             const position = renderInst.allocateUniformBufferF32(OpaqueShader.ub_Position, 12);
             fillMatrix4x3(position, 0, pos);
@@ -118,11 +142,11 @@ export class RedlineRenderer implements SceneGfx {
             );
 
             renderInst.setDrawCount(mesh.indexCount * 3);
-            inst.submitRenderInst(renderInst);
+            inst_list.submitRenderInst(renderInst);
         }
     }
 
-    private renderEntity(inst: GfxRenderInstList, model: Geo, entity: rust.RedlineEntity) {
+    private renderEntity(inst: RedlineRenderInstList, model: Geo, entity: rust.RedlineEntity) {
         const scale = vec3.fromValues(100, 100, 100);
 
         // Compute position matrix
@@ -211,7 +235,8 @@ export class RedlineRenderer implements SceneGfx {
             pass.attachRenderTargetID(GfxrAttachmentSlot.DepthStencil, skyDepthTargetID);
 
             pass.exec((passRenderer, _scope) => {
-                this.skyRenderInstList.drawOnPassRenderer(this.renderHelper.renderCache, passRenderer);
+                this.skyRenderInstList.opaque.drawOnPassRenderer(this.renderHelper.renderCache, passRenderer);
+                this.skyRenderInstList.transparent.drawOnPassRenderer(this.renderHelper.renderCache, passRenderer);
             });
         });
 
@@ -222,7 +247,18 @@ export class RedlineRenderer implements SceneGfx {
             pass.attachRenderTargetID(GfxrAttachmentSlot.DepthStencil, mainDepthTargetID);
 
             pass.exec((passRenderer, _scope) => {
-                this.renderInstList.drawOnPassRenderer(this.renderHelper.renderCache, passRenderer);
+                this.renderInstList.opaque.drawOnPassRenderer(this.renderHelper.renderCache, passRenderer);
+            });
+        });
+
+        builder.pushPass((pass) => {
+            pass.setDebugName("Transparent Objects");
+
+            pass.attachRenderTargetID(GfxrAttachmentSlot.Color0, mainColorTargetID);
+            pass.attachRenderTargetID(GfxrAttachmentSlot.DepthStencil, mainDepthTargetID);
+
+            pass.exec((passRenderer, _scope) => {
+                this.renderInstList.transparent.drawOnPassRenderer(this.renderHelper.renderCache, passRenderer);
             });
         });
 
