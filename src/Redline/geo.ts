@@ -3,6 +3,9 @@ import { rust } from "../rustlib.js";
 import { GfxDevice, GfxBuffer, GfxFormat, GfxBufferUsage, GfxBufferFrequencyHint } from "../gfx/platform/GfxPlatform";
 import ArrayBufferSlice from "../ArrayBufferSlice";
 import { createBufferFromData } from "../gfx/helpers/BufferHelpers.js";
+import { SceneContext } from "../SceneBase";
+import { pathBase } from "./Scenes";
+import { TextureCache } from "./material";
 
 export type Mesh = {
     texture: string,
@@ -61,5 +64,37 @@ export class Geo {
     public destroy(device: GfxDevice): void {
         device.destroyBuffer(this.indexBuffer);
         device.destroyBuffer(this.vertexBuffer);
+    }
+}
+
+
+export class GeoCache {
+    public inner: Map<string, Geo> = new Map();
+
+    public get(key: string): Geo | undefined {
+        return this.inner.get(key.toLowerCase())
+    }
+
+    public async preload(name: string, context: SceneContext, textures: TextureCache): Promise<boolean> {
+        name = name.toLowerCase();
+        if (name == "" || this.inner.get(name) != undefined) return false;
+
+        const geo_file = encodeURIComponent(name + ".geo");
+        const raw = await context.dataFetcher.fetchData(`${pathBase}/${geo_file}`, {allow404: true});
+        if (raw.byteLength == 0) return false;
+        const geo = new Geo(name, context.device, raw);
+        this.inner.set(name, geo);
+
+        for (const mesh of geo.meshes) {
+            await textures.preload(mesh.texture, context);
+        }
+        return true;
+    }
+
+    public destroy(device: GfxDevice) {
+        for (const geo of this.inner.values()) {
+            geo.destroy(device);
+        }
+        this.inner.clear();
     }
 }

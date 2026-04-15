@@ -12,11 +12,11 @@ import { GfxRenderInstList } from "../gfx/render/GfxRenderInstManager.js";
 import { makeBackbufferDescSimple, standardFullClearRenderPassDescriptor } from "../gfx/helpers/RenderGraphHelpers.js";
 import { GfxrAttachmentSlot } from "../gfx/render/GfxRenderGraph.js";
 
-import { Texture } from "./material";
-import { Geo } from "./geo";
+import { Texture, TextureCache } from "./material";
+import { Geo, GeoCache } from "./geo";
 import { OpaqueShader } from "./shaders";
 
-const pathBase = `Redline`;
+export const pathBase = `Redline`;
 
 export class RedlineRenderer implements SceneGfx {
     public textureHolder = new FakeTextureHolder([]);
@@ -34,7 +34,7 @@ export class RedlineRenderer implements SceneGfx {
         private sceneContext: SceneContext,
         public textures: TextureCache,
         private model_table: string[],
-        private models: Map<string, Geo>,
+        private models: GeoCache,
         private skybox: string,
         private to_render: rust.RedlineEntity[],
     ) {
@@ -124,7 +124,6 @@ export class RedlineRenderer implements SceneGfx {
 
     private renderEntity(inst: GfxRenderInstList, model: Geo, entity: rust.RedlineEntity) {
         const scale = vec3.fromValues(100, 100, 100);
-        const mat = mat4.create();
 
         // Compute position matrix
         const r_position = entity.pos();
@@ -134,17 +133,23 @@ export class RedlineRenderer implements SceneGfx {
         vec3.mul(pos, vec3.fromValues(-r_position[0], r_position[1], r_position[2]), scale);
 
         const forward = vec3.fromValues(r_forward[0], r_forward[1], r_forward[2]);
-        const up = vec3.fromValues(r_up[0], r_up[1], r_up[2]);
+        vec3.negate(forward, forward);
+        let up = vec3.fromValues(r_up[0], r_up[1], r_up[2]);
 
-        mat4.lookAt(mat, vec3.create(), forward, up);
+        const rot = mat4.lookAt(mat4.create(), vec3.create(), forward, up);
+
+        const mat = mat4.create();
+        mat4.identity(mat);
+
         mat4.translate(mat, mat, pos);
+        mat4.multiply(mat, mat, rot);
         mat4.scale(mat, mat, scale);
 
         this.renderModel(inst, model, mat);
     }
 
     private renderSky(pos: vec3) {
-        const model = this.models.get(this.skybox.toLowerCase() + ".sky");
+        const model = this.models.get(this.skybox.toLowerCase());
         if (!model) {
             console.log(this.skybox);
             return;
@@ -170,11 +175,8 @@ export class RedlineRenderer implements SceneGfx {
             { numSamplers: 1, numUniformBuffers: 2 },
         ]);
 
-
-
         const data = template.allocateUniformBufferF32(OpaqueShader.ub_SceneParams, 16);
         let offs = 0;
-        const x = mat4.create();
         offs += fillMatrix4x4(data, offs, viewerInput.camera.clipFromWorldMatrix);
 
         // TODO: It looks like these are script defined geometry
@@ -236,36 +238,11 @@ export class RedlineRenderer implements SceneGfx {
 
     public destroy(device: GfxDevice): void {
         this.textures.destroy(device);
+        this.models.destroy(device);
 
-        for (const mod of this.models.values()) {
-            mod.destroy(device);
+        for (const entity of this.to_render) {
+            entity.free()
         }
-        this.models.clear();
-    }
-}
-
-class TextureCache {
-    public inner: Map<string, Texture> = new Map();
-
-    public get(key: string): Texture | undefined {
-        return this.inner.get(key.toLowerCase())
-    }
-
-    public async preload(name: string, context: SceneContext) {
-        name = name.toLowerCase();
-        if (name == "" || this.inner.get(name) != undefined) return;
-
-        const texture_file = encodeURIComponent(name.replace(".tga", "") + ".btf");
-        const raw = await context.dataFetcher.fetchData(`${pathBase}/${texture_file.toLowerCase()}`, {allow404: true});
-        if (raw.byteLength == 0) return;
-        this.inner.set(name, new Texture(name, context.device, raw));
-    }
-
-    public destroy(device: GfxDevice) {
-        for (const tex of this.inner.values()) {
-            tex.destroy(device);
-        }
-        this.inner.clear();
     }
 }
 
@@ -284,30 +261,27 @@ class RedlineSceneDesc implements SceneDesc {
         }
 
         // Load base models
-        const models = new Map<string, Geo>();
+        const models = new GeoCache();
         const asset_list = world.list_assets();
         const asset_table = [];
         for (const asset of asset_list) {
+            console.log(asset_table.length + " " + asset.name);
             const name = asset.name.toLowerCase();
-            asset_table.push(name);
-            if (models.get(name) != undefined) continue;
-            if (asset.kind != 0) continue; // 1 is animated, 2 is script
-            const model_file = name + ".geo";
-            const raw = await context.dataFetcher.fetchData(`${pathBase}/${model_file}`, { allow404: true });
-            if (raw.byteLength == 0) continue;
-
-            const mod =  new Geo(name, device, raw);
-            models.set(name, mod);
-
-            for (const mesh of mod.meshes) {
-                await textures.preload(mesh.texture, context);
+            asset_table.push(asset.kind == 0 ? name : "UNHANDLED");
+            switch (asset.kind) {
+                case 0:
+                    if (models.get(name) != undefined) break;
+                    const success = await models.preload(name, context, textures);
+                    if (!success) console.log("Failed to load model: " + name);
+                    break;
+                default:
+                    break;
             }
 
-            asset.free()
+            asset.free();
         }
 
         const skybox = world.skybox();
-
         const to_render = world.list_entities();
 
         world.free();
