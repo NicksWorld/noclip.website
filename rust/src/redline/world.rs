@@ -412,7 +412,7 @@ fn read_world_entity<R: std::io::Read + std::io::Seek>(
         reader.read_bytes_const(&mut tag, Order::Msb0)?;
 
         // TODO: version < 6
-        log(&format!("Entity type: {}", tag[0]));
+        //log(&format!("Entity type: {}", tag[0]));
         out.push(match tag[0] {
             0x00 => WorldEntity::Model(Model::from_reader_with_ctx(reader, version)?),
             0x01 => WorldEntity::Unknown1(Entity1::from_reader_with_ctx(reader, version)?),

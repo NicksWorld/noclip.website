@@ -110,7 +110,7 @@ import * as Scenes_Descent2Vertigo from './Descent1_2/Scenes_Descent2Vertigo.js'
 import * as Scenes_Spyro from './Spyro/scenes.js';
 import * as Scenes_CrazyTaxi from './CrazyTaxi/scenes.js';
 import * as Scenes_TokyoMirageSessionsSharpFE from './TokyoMirageSessionsSharpFE/scenes.js';
-import * as Scenes_Redline from './Redline/Scenes.js';
+import * as Scenes_Redline from './Redline/scenes.js';
 
 import { DroppedFileSceneDesc, traverseFileSystemDataTransfer } from './Scenes_FileDrops.js';
 

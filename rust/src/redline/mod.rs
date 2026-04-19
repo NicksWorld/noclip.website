@@ -1,8 +1,12 @@
 use deku::{ctx::Order, DekuError, DekuReader};
+
 mod geo;
+mod pcscript;
 mod world;
 
-// Read null-terminated padded string
+// Shared parsing logic used across file formats
+
+/// Read null-terminated padded string
 fn read_padded_string<R: std::io::Read + std::io::Seek>(
     reader: &mut deku::reader::Reader<R>,
     len: usize,
@@ -16,7 +20,7 @@ fn read_padded_string<R: std::io::Read + std::io::Seek>(
     )
 }
 
-// Read length-prefixed string
+/// Read length-prefixed string
 fn read_len_string<R: std::io::Read + std::io::Seek>(
     reader: &mut deku::reader::Reader<R>,
 ) -> Result<String, DekuError> {

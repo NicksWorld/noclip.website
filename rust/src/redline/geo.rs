@@ -18,7 +18,6 @@ struct Mesh {
     pub vertex_count: u16,
     pub index_offset: u16,
     pub index_count: u16,
-    // TODO: Export the render flags from here
     pub render_flags: u8,
     unk2: u8,
     unk3: u16,

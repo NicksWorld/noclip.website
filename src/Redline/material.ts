@@ -1,5 +1,5 @@
 
-import { pathBase } from "./Scenes";
+import { pathBase } from "./scenes";
 import { GfxDevice, GfxTexture, GfxTextureUsage, GfxFormat, makeTextureDescriptor2D } from "../gfx/platform/GfxPlatform";
 import ArrayBufferSlice from "../ArrayBufferSlice";
 import { SceneContext } from "../SceneBase";

@@ -15,6 +15,7 @@ import { GfxrAttachmentSlot } from "../gfx/render/GfxRenderGraph.js";
 import { Texture, TextureCache } from "./material";
 import { Geo, GeoCache } from "./geo";
 import { OpaqueShader } from "./shaders";
+import { loadPcScript } from "./script.js";
 
 export const pathBase = `Redline`;
 
@@ -22,6 +23,8 @@ class RedlineRenderInstList {
     public opaque: GfxRenderInstList = new GfxRenderInstList();
     public transparent: GfxRenderInstList = new GfxRenderInstList();
 }
+
+type RedlineAsset = Geo | undefined;
 
 const attachmentStatesAdditive: GfxAttachmentState[] = [{
     alphaBlendState: {blendMode: GfxBlendMode.Add, blendDstFactor: GfxBlendFactor.One, blendSrcFactor: GfxBlendFactor.SrcAlpha},
@@ -44,9 +47,8 @@ export class RedlineRenderer implements SceneGfx {
     constructor(
         private sceneContext: SceneContext,
         public textures: TextureCache,
-        private model_table: string[],
+        private asset_table: RedlineAsset[],
         private models: GeoCache,
-        private skybox: string,
         private to_render: rust.RedlineEntity[],
     ) {
         this.renderHelper = new GfxRenderHelper(sceneContext.device, sceneContext);
@@ -172,20 +174,6 @@ export class RedlineRenderer implements SceneGfx {
         this.renderModel(inst, model, mat);
     }
 
-    private renderSky(pos: vec3) {
-        const model = this.models.get(this.skybox.toLowerCase());
-        if (!model) {
-            console.log(this.skybox);
-            return;
-        }
-
-        const mat = mat4.create();
-        mat4.translate(mat, mat, pos);
-        mat4.scale(mat, mat, [100, 100, 100]);
-
-        this.renderModel(this.skyRenderInstList, model!, mat);
-    }
-
     public render(device: GfxDevice, viewerInput: ViewerRenderInput): void {
         this.renderHelper.debugDraw.beginFrame(
             viewerInput.camera.projectionMatrix,
@@ -203,13 +191,8 @@ export class RedlineRenderer implements SceneGfx {
         let offs = 0;
         offs += fillMatrix4x4(data, offs, viewerInput.camera.clipFromWorldMatrix);
 
-        // TODO: It looks like these are script defined geometry
-        // const pos = vec3.create();
-        // mat4.getTranslation(pos, viewerInput.camera.worldMatrix);
-        // this.renderSky(pos);
-
         for (const entity of this.to_render) {
-            const mdl = this.models.get(this.model_table[entity.model_idx]);
+            const mdl = this.asset_table[entity.model_idx]!;
             if (mdl == undefined) {
                 // Script object or Animated
                 continue;
@@ -290,39 +273,50 @@ class RedlineSceneDesc implements SceneDesc {
         const worldRaw = await context.dataFetcher.fetchData(`${pathBase}/${this.id.toLowerCase()}`);
         const world = rust.RedlineWorld.load(worldRaw.createTypedArray(Uint8Array));
 
+        // Load core scripts
+        const scripts = await loadPcScript(context);
+
         // Load base textures
         const textures = new TextureCache();
         for (const texture of world.list_textures()) {
             await textures.preload(texture, context);
         }
 
-        // Load base models
+        // Load base assets
         const models = new GeoCache();
         const asset_list = world.list_assets();
-        const asset_table = [];
+        const asset_table: RedlineAsset[] = [];
         for (const asset of asset_list) {
             console.log(asset_table.length + " " + asset.name);
-            const name = asset.name.toLowerCase();
-            asset_table.push(asset.kind == 0 ? name : "UNHANDLED");
+            let name = asset.name.toLowerCase();
             switch (asset.kind) {
+                case 2:
+                    const s = scripts.lookup_object(name);
+                    name = s!.toLowerCase().replace(".geo", "");
                 case 0:
-                    if (models.get(name) != undefined) break;
-                    const success = await models.preload(name, context, textures);
-                    if (!success) console.log("Failed to load model: " + name);
+                    let model = models.get(name);
+                    if (model == undefined) {
+                        model = await models.preload(name, context, textures);
+                        if (model == undefined) console.log("Failed to load model: " + name);
+                    }
+                    asset_table.push(model!);
                     break;
                 default:
+                    asset_table.push(undefined);
+                    console.log("Unhandled asset type: " + asset.kind);
                     break;
             }
 
             asset.free();
         }
 
-        const skybox = world.skybox();
         const to_render = world.list_entities();
 
+        scripts.free();
         world.free();
 
-        return new RedlineRenderer(context, textures, asset_table, models, skybox, to_render);
+
+        return new RedlineRenderer(context, textures, asset_table, models, to_render);
     }
 }
 
@@ -351,8 +345,8 @@ export const sceneGroup: SceneGroup = {
         new RedlineSceneDesc("Showdown.wld", "Showdown"),
         new RedlineSceneDesc("ShowdownRant.wld", "Showdown Rant"),
         "Hub",
-        // These are cinematic sections before levels. They may be better named and
-        // sorted into the campaign section
+        // These are used for the pre-mission cinematics.
+        // TODO: Determine if these are better inter-mixed with campaign missions
         new RedlineSceneDesc("hub0.wld", "Hub0"),
         new RedlineSceneDesc("hub1.wld", "Hub1"),
         new RedlineSceneDesc("hub2.wld", "Hub2"),
