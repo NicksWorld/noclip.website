@@ -110,7 +110,8 @@ export class RedlineRenderer implements SceneGfx {
 
     private renderModel(inst: RedlineRenderInstList, model: Geo, pos: mat4): void {
         for (const mesh of model.meshes) {
-            const tex = this.assets.get_texture(mesh.texture)?.gfxTexture;
+            if (mesh.texture == "") continue;
+            const tex = this.assets.get_texture(mesh.texture);
             if (tex == undefined) continue; // TODO (vertex colored)
             const renderInst = this.renderHelper.renderInstManager.newRenderInst();
 
@@ -133,7 +134,7 @@ export class RedlineRenderer implements SceneGfx {
 
             renderInst.setSamplerBindings(0, [
                 {
-                    gfxTexture: tex!,
+                    gfxTexture: tex.gfxTexture,
                     gfxSampler: this.sampler,
                 }
             ]);

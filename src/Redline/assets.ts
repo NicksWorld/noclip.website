@@ -67,8 +67,8 @@ export class AssetManager {
     }
 
     public async load_texture(name: string, context: SceneContext): Promise<Texture | undefined> {
-        name = this.formatFilename(name, "btf", "tga");
         if (name == "")  return;
+        name = this.formatFilename(name, "btf", "tga");
         let texture = this.textures.get(name);
         if (texture != undefined) return texture;
         
@@ -81,8 +81,8 @@ export class AssetManager {
     }
 
     public async load_geo(name: string, context: SceneContext): Promise<Geo | undefined> {
-        name = this.formatFilename(name, "geo");
         if (name == "") return;
+        name = this.formatFilename(name, "geo");
         let geo = this.geometry.get(name);
         if (geo != undefined) return geo;
         
