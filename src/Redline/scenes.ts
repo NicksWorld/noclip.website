@@ -255,9 +255,13 @@ class RedlineSceneDesc implements SceneDesc {
             switch (asset.kind) {
                 case 2:
                     const s = assets.scripts.lookup_object(name);
-                    console.log(s);
                     if (s != undefined) {
                         name = s.geo.toLowerCase().replace(".geo", "");
+                        if (s.unk9.name != "") {
+                            // Appears to be the spawn point of non-enemy NPCs.
+                            // Should override the default model
+                            name = "";
+                        }
                     } else {
                         name = "";
                     }

@@ -120,7 +120,7 @@ enum DescriptorKind {
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
-#[wasm_bindgen(js_name = "RedlineScriptRef", getter_with_clone)]
+#[wasm_bindgen(js_name = "RedlineScriptRef", getter_with_clone, inspectable)]
 struct ScriptRef {
     pub name: String,
     pub kind: u16,
@@ -142,7 +142,7 @@ impl ScriptRef {
 
 #[derive(Debug, DekuRead)]
 #[allow(unused)]
-#[wasm_bindgen(js_name = "RedlineScriptObject", getter_with_clone)]
+#[wasm_bindgen(js_name = "RedlineScriptObject", getter_with_clone, inspectable)]
 struct Object {
     #[deku(reader = "read_padded_string(deku::reader, 18)")]
     pub name: String,
