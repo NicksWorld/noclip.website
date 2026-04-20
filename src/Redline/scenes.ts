@@ -12,10 +12,12 @@ import { GfxRenderInstList } from "../gfx/render/GfxRenderInstManager.js";
 import { makeBackbufferDescSimple, standardFullClearRenderPassDescriptor } from "../gfx/helpers/RenderGraphHelpers.js";
 import { GfxrAttachmentSlot } from "../gfx/render/GfxRenderGraph.js";
 
-import { Texture, TextureCache } from "./material";
-import { Geo, GeoCache } from "./geo";
+import { Texture } from "./material";
+import { Geo} from "./geo";
 import { OpaqueShader } from "./shaders";
 import { loadPcScript } from "./script.js";
+import { WorldGeometry } from "./world.js";
+import { AssetManager } from "./assets.js";
 
 export const pathBase = `Redline`;
 
@@ -46,10 +48,9 @@ export class RedlineRenderer implements SceneGfx {
 
     constructor(
         private sceneContext: SceneContext,
-        public textures: TextureCache,
+        public assets: AssetManager,
         private asset_table: RedlineAsset[],
-        private models: GeoCache,
-        private to_render: rust.RedlineEntity[],
+        private to_render: WorldGeometry[],
     ) {
         this.renderHelper = new GfxRenderHelper(sceneContext.device, sceneContext);
         const cache = this.renderHelper.renderCache;
@@ -101,7 +102,7 @@ export class RedlineRenderer implements SceneGfx {
             indexBufferFormat: GfxFormat.U16_R,
         })
 
-        for (const tex of this.textures.inner.values()) {
+        for (const tex of this.assets.textures.values()) {
             this.textureHolder.viewerTextures.push(tex);
         }
         this.textureHolder.onnewtextures();
@@ -109,7 +110,7 @@ export class RedlineRenderer implements SceneGfx {
 
     private renderModel(inst: RedlineRenderInstList, model: Geo, pos: mat4): void {
         for (const mesh of model.meshes) {
-            const tex = this.textures.get(mesh.texture)?.gfxTexture;
+            const tex = this.assets.get_texture(mesh.texture)?.gfxTexture;
             if (tex == undefined) continue; // TODO (vertex colored)
             const renderInst = this.renderHelper.renderInstManager.newRenderInst();
 
@@ -148,32 +149,6 @@ export class RedlineRenderer implements SceneGfx {
         }
     }
 
-    private renderEntity(inst: RedlineRenderInstList, model: Geo, entity: rust.RedlineEntity) {
-        const scale = vec3.fromValues(100, 100, 100);
-
-        // Compute position matrix
-        const r_position = entity.pos();
-        const r_forward = entity.forward();
-        const r_up = entity.up();
-        const pos = vec3.create()
-        vec3.mul(pos, vec3.fromValues(-r_position[0], r_position[1], r_position[2]), scale);
-
-        const forward = vec3.fromValues(r_forward[0], r_forward[1], r_forward[2]);
-        vec3.negate(forward, forward);
-        let up = vec3.fromValues(r_up[0], r_up[1], r_up[2]);
-
-        const rot = mat4.lookAt(mat4.create(), vec3.create(), forward, up);
-
-        const mat = mat4.create();
-        mat4.identity(mat);
-
-        mat4.translate(mat, mat, pos);
-        mat4.multiply(mat, mat, rot);
-        mat4.scale(mat, mat, scale);
-
-        this.renderModel(inst, model, mat);
-    }
-
     public render(device: GfxDevice, viewerInput: ViewerRenderInput): void {
         this.renderHelper.debugDraw.beginFrame(
             viewerInput.camera.projectionMatrix,
@@ -192,14 +167,14 @@ export class RedlineRenderer implements SceneGfx {
         offs += fillMatrix4x4(data, offs, viewerInput.camera.clipFromWorldMatrix);
 
         for (const entity of this.to_render) {
-            const mdl = this.asset_table[entity.model_idx]!;
+            const mdl = this.asset_table[entity.model_index]!;
             if (mdl == undefined) {
                 // Script object or Animated
                 continue;
             }
             const model = mdl!;
 
-            this.renderEntity(this.renderInstList, model, entity);
+            this.renderModel(this.renderInstList, model, entity.mat);
         }
 
         const builder = this.renderHelper.renderGraph.newGraphBuilder();
@@ -253,15 +228,12 @@ export class RedlineRenderer implements SceneGfx {
         this.renderHelper.prepareToRender();
 
         builder.execute();
+        this.renderInstList.opaque.reset();
+        this.renderInstList.transparent.reset();
     }
 
     public destroy(device: GfxDevice): void {
-        this.textures.destroy(device);
-        this.models.destroy(device);
-
-        for (const entity of this.to_render) {
-            entity.free()
-        }
+        this.assets.destroy(device);
     }
 }
 
@@ -270,36 +242,30 @@ class RedlineSceneDesc implements SceneDesc {
     }
 
     public async createScene(device: GfxDevice, context: SceneContext): Promise<SceneGfx> {
-        const worldRaw = await context.dataFetcher.fetchData(`${pathBase}/${this.id.toLowerCase()}`);
-        const world = rust.RedlineWorld.load(worldRaw.createTypedArray(Uint8Array));
-
-        // Load core scripts
-        const scripts = await loadPcScript(context);
-
-        // Load base textures
-        const textures = new TextureCache();
-        for (const texture of world.list_textures()) {
-            await textures.preload(texture, context);
-        }
+        const assets = new AssetManager();
+        await assets.load(this.id, context);
 
         // Load base assets
-        const models = new GeoCache();
-        const asset_list = world.list_assets();
+        const asset_list = assets.world.list_assets();
         const asset_table: RedlineAsset[] = [];
         for (const asset of asset_list) {
             console.log(asset_table.length + " " + asset.name);
             let name = asset.name.toLowerCase();
             switch (asset.kind) {
                 case 2:
-                    const s = scripts.lookup_object(name);
-                    name = s!.toLowerCase().replace(".geo", "");
-                case 0:
-                    let model = models.get(name);
-                    if (model == undefined) {
-                        model = await models.preload(name, context, textures);
-                        if (model == undefined) console.log("Failed to load model: " + name);
+                    const s = assets.scripts.lookup_object(name);
+                    console.log(s);
+                    if (s != undefined) {
+                        name = s.geo.toLowerCase().replace(".geo", "");
+                    } else {
+                        name = "";
                     }
-                    asset_table.push(model!);
+                    if (s != undefined) {
+                        s.free();
+                    }
+                case 0:
+                    const model = await assets.load_geo(name, context);
+                    asset_table.push(model);
                     break;
                 default:
                     asset_table.push(undefined);
@@ -310,13 +276,14 @@ class RedlineSceneDesc implements SceneDesc {
             asset.free();
         }
 
-        const to_render = world.list_entities();
+        const world_geo = assets.world.list_entities();
+        const to_render = [];
+        for (const geo of world_geo) {
+            to_render.push(new WorldGeometry(geo));
+            geo.free();
+        }
 
-        scripts.free();
-        world.free();
-
-
-        return new RedlineRenderer(context, textures, asset_table, models, to_render);
+        return new RedlineRenderer(context, assets, asset_table, to_render);
     }
 }
 

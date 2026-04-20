@@ -108,28 +108,3 @@ export class Texture {
         device.destroyTexture(this.gfxTexture);
     }
 }
-
-export class TextureCache {
-    public inner: Map<string, Texture> = new Map();
-
-    public get(key: string): Texture | undefined {
-        return this.inner.get(key.toLowerCase())
-    }
-
-    public async preload(name: string, context: SceneContext) {
-        name = name.toLowerCase();
-        if (name == "" || this.inner.get(name) != undefined) return;
-
-        const texture_file = encodeURIComponent(name.replace(".tga", "") + ".btf");
-        const raw = await context.dataFetcher.fetchData(`${pathBase}/${texture_file.toLowerCase()}`, {allow404: true});
-        if (raw.byteLength == 0) return;
-        this.inner.set(name, new Texture(name, context.device, raw));
-    }
-
-    public destroy(device: GfxDevice) {
-        for (const tex of this.inner.values()) {
-            tex.destroy(device);
-        }
-        this.inner.clear();
-    }
-}

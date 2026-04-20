@@ -45,18 +45,8 @@ impl<'a> RawCursor<'a> {
         self.pos += 4;
         v
     }
-    pub fn read_f32(&mut self) -> f32 {
-        let v = f32::from_le_bytes(self.inner[self.pos..self.pos + 4].try_into().unwrap());
-        self.pos += 4;
-        v
-    }
     pub fn read_u16(&mut self) -> u16 {
         let v = u16::from_le_bytes(self.inner[self.pos..self.pos + 2].try_into().unwrap());
-        self.pos += 2;
-        v
-    }
-    pub fn read_i16(&mut self) -> i16 {
-        let v = i16::from_le_bytes(self.inner[self.pos..self.pos + 2].try_into().unwrap());
         self.pos += 2;
         v
     }
@@ -130,7 +120,7 @@ enum DescriptorKind {
 
 #[derive(Debug, Clone)]
 #[allow(unused)]
-#[wasm_bindgen(js_class = "RedlineScript", getter_with_clone)]
+#[wasm_bindgen(js_name = "RedlineScriptRef", getter_with_clone)]
 struct ScriptRef {
     pub name: String,
     pub kind: u16,
@@ -300,13 +290,13 @@ impl PCScript {
         script
     }
 
-    pub fn lookup_object(&self, name: &str) -> Option<String> {
+    pub fn lookup_object(&self, name: &str) -> Option<Object> {
         if let Some(section) = &self.sections[ScriptType::Object as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = Object::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
                     .1;
-                return Some(script.geo);
+                return Some(script);
             }
         }
         None

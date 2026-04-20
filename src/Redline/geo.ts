@@ -5,7 +5,6 @@ import ArrayBufferSlice from "../ArrayBufferSlice";
 import { createBufferFromData } from "../gfx/helpers/BufferHelpers.js";
 import { SceneContext } from "../SceneBase";
 import { pathBase } from "./scenes";
-import { TextureCache } from "./material";
 
 export type Mesh = {
     texture: string,
@@ -70,33 +69,3 @@ export class Geo {
 }
 
 
-export class GeoCache {
-    public inner: Map<string, Geo> = new Map();
-
-    public get(key: string): Geo | undefined {
-        return this.inner.get(key.toLowerCase())
-    }
-
-    public async preload(name: string, context: SceneContext, textures: TextureCache): Promise<Geo | undefined> {
-        name = name.toLowerCase();
-        if (name == "" || this.inner.get(name) != undefined) return undefined;
-
-        const geo_file = encodeURIComponent(name + ".geo");
-        const raw = await context.dataFetcher.fetchData(`${pathBase}/${geo_file}`, {allow404: true});
-        if (raw.byteLength == 0) return undefined;
-        const geo = new Geo(name, context.device, raw);
-        this.inner.set(name, geo);
-
-        for (const mesh of geo.meshes) {
-            await textures.preload(mesh.texture, context);
-        }
-        return geo;
-    }
-
-    public destroy(device: GfxDevice) {
-        for (const geo of this.inner.values()) {
-            geo.destroy(device);
-        }
-        this.inner.clear();
-    }
-}
