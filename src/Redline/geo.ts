@@ -1,10 +1,8 @@
 
 import { rust } from "../rustlib.js";
-import { GfxDevice, GfxBuffer, GfxFormat, GfxBufferUsage, GfxBufferFrequencyHint } from "../gfx/platform/GfxPlatform";
+import { GfxDevice, GfxBuffer, GfxBufferUsage, GfxBufferFrequencyHint } from "../gfx/platform/GfxPlatform";
 import ArrayBufferSlice from "../ArrayBufferSlice";
 import { createBufferFromData } from "../gfx/helpers/BufferHelpers.js";
-import { SceneContext } from "../SceneBase";
-import { pathBase } from "./scenes";
 
 export type Mesh = {
     texture: string,

@@ -112,12 +112,12 @@ struct Unknown7 {
 #[derive(DekuRead, Debug, Clone)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-#[wasm_bindgen(js_name = "RedlineEntity")]
+#[wasm_bindgen(js_name = "RedlineWorldModel")]
 pub struct Model {
-    pub model_idx: u16,
+    pub asset_idx: u16,
     pos: [f32; 3],
-    unk3: [f32; 3],
-    unk4: [f32; 3],
+    forward: [f32; 3],
+    up: [f32; 3],
     unk5: u16,
     #[deku(cond = "version > 0x10")]
     unk6: u16,
@@ -131,16 +131,29 @@ pub struct Model {
     unk10: u32,
 }
 
-#[wasm_bindgen(js_class = "RedlineEntity")]
+#[wasm_bindgen(js_class = "RedlineWorldModel")]
 impl Model {
     pub fn pos(&self) -> Vec<f32> {
         Vec::from(self.pos)
     }
     pub fn forward(&self) -> Vec<f32> {
-        Vec::from(self.unk3)
+        Vec::from(self.forward)
     }
     pub fn up(&self) -> Vec<f32> {
-        Vec::from(self.unk4)
+        Vec::from(self.up)
+    }
+}
+
+#[wasm_bindgen(js_class = "RedlineWorldAnim")]
+impl Anim {
+    pub fn pos(&self) -> Vec<f32> {
+        Vec::from(self.pos)
+    }
+    pub fn forward(&self) -> Vec<f32> {
+        Vec::from(self.forward)
+    }
+    pub fn up(&self) -> Vec<f32> {
+        Vec::from(self.up)
     }
 }
 
@@ -223,14 +236,15 @@ pub struct Entity7 {
     unk9: u16,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Clone)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-pub struct Entity1 {
-    unk1: u16,
-    unk2: [f32; 3],
-    unk3: [f32; 3],
-    unk4: [f32; 3],
+#[wasm_bindgen(js_name = "RedlineWorldAnim")]
+pub struct Anim {
+    pub asset_idx: u16,
+    pos: [f32; 3],
+    forward: [f32; 3],
+    up: [f32; 3],
     unk5: u16,
     #[deku(cond = "version > 0x19")]
     unk6: u16,
@@ -382,7 +396,7 @@ pub struct Entity15 {
 #[allow(unused)]
 pub enum WorldEntity {
     Model(Model),
-    Unknown1(Entity1),
+    Anim(Anim),
     Unknown2(Entity2), // Enemy spawnpoints?
     Unknown3(Entity3),
     Unknown4(Entity4),
@@ -412,10 +426,9 @@ fn read_world_entity<R: std::io::Read + std::io::Seek>(
         reader.read_bytes_const(&mut tag, Order::Msb0)?;
 
         // TODO: version < 6
-        //log(&format!("Entity type: {}", tag[0]));
         out.push(match tag[0] {
             0x00 => WorldEntity::Model(Model::from_reader_with_ctx(reader, version)?),
-            0x01 => WorldEntity::Unknown1(Entity1::from_reader_with_ctx(reader, version)?),
+            0x01 => WorldEntity::Anim(Anim::from_reader_with_ctx(reader, version)?),
             0x02 => WorldEntity::Unknown2(Entity2::from_reader_with_ctx(reader, version)?),
             0x03 => WorldEntity::Unknown3(Entity3::from_reader_with_ctx(reader, version)?),
             0x04 => WorldEntity::Unknown4(Entity4::from_reader_with_ctx(reader, version)?),
@@ -431,7 +444,12 @@ fn read_world_entity<R: std::io::Read + std::io::Seek>(
             _ => {
                 break;
             } // TODO
-        })
+        });
+        log(&format!(
+            "Entity type: {}\n{:#?}",
+            tag[0],
+            out[out.len() - 1]
+        ));
     }
 
     log(&format!("Entities: {:#?}", out));
@@ -512,10 +530,21 @@ impl World {
         self.assets.clone()
     }
 
-    pub fn list_entities(&self) -> Vec<Model> {
+    pub fn list_models(&self) -> Vec<Model> {
         let mut out = vec![];
         for entity in &self.entities {
             if let WorldEntity::Model(m) = entity {
+                out.push(m.clone());
+            }
+        }
+
+        out
+    }
+
+    pub fn list_anims(&self) -> Vec<Anim> {
+        let mut out = vec![];
+        for entity in &self.entities {
+            if let WorldEntity::Anim(m) = entity {
                 out.push(m.clone());
             }
         }

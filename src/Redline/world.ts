@@ -6,10 +6,10 @@ export class World {
 
 export class WorldGeometry {
     public mat: mat4;
-    public model_index: number;
+    public asset_index: number;
 
-    constructor(entity: rust.RedlineEntity) {
-        this.model_index = entity.model_idx;
+    constructor(entity: rust.RedlineWorldModel | rust.RedlineWorldAnim) {
+        this.asset_index = entity.asset_idx;
         // Compute matrix
         const scale = vec3.fromValues(100, 100, 100);
 

@@ -67,7 +67,7 @@ export class Texture {
 
             let size = (bpp / 8) * mip_width * mip_height;
 
-            if (name == "railbtm2.tga") continue;
+            if (name == "railbtm2.btf") continue; // Corrupt texture?
             let buffer = new Uint8Array(mip_width * mip_height * (bpp == 32 ? 4 : 3));
             let slice = r.readSlice(size).createTypedArray(Uint8Array);
 

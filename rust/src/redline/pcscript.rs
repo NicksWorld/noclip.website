@@ -78,11 +78,13 @@ struct Descriptor {
 #[non_exhaustive]
 enum ScriptType {
     Car = 0x0,
+    Sky = 0x1,
     AI = 0x3,     // Foot or Car
     Weapon = 0x6, // Unverified
     Person = 0x7,
     Projectile = 0x8, // Unverified - very uncertain
     Object = 0x9,
+    AnimDesc = 0xC, // Unverified
     SFX = 0xE,
     Sprite = 0xF,
     CarCollision = 0x14, // Unverified - Car collision spin/elasticity
@@ -138,6 +140,23 @@ impl ScriptRef {
             kind: u16::from_le_bytes(kind[0..2].try_into().unwrap()),
         })
     }
+}
+
+#[derive(Debug, DekuRead)]
+#[allow(unused)]
+#[wasm_bindgen(js_name = "RedlineScriptAnimDesc", getter_with_clone, inspectable)]
+struct AnimDesc {
+    #[deku(reader = "read_padded_string(deku::reader, 18)")]
+    pub name: String,
+    #[deku(reader = "read_padded_string(deku::reader, 38)")]
+    pub anim: String,
+    #[deku(reader = "ScriptRef::read(deku::reader)")]
+    pub unk: ScriptRef,
+    /// 1 = forward, -1 = reverse
+    pub dir: i16,
+    pub scale_x: f32,
+    pub scale_y: f32,
+    pub scale_z: f32,
 }
 
 #[derive(Debug, DekuRead)]
@@ -225,6 +244,10 @@ impl PCScript {
                 });
             }
 
+            if (section_id == 1) {
+                log(&format!("DESC: {:#?}", section.descriptors));
+            }
+
             // Header before entries
             let entry_len = cursor.read_u16();
             let entry_count = cursor.read_u16();
@@ -283,7 +306,6 @@ impl PCScript {
 
             // Setup new cursor pos
             cursor.pos = entry_ext.pos;
-            log(&format!("Section id {}", section_id));
             script.sections[section_id as usize] = Some(section);
         }
 
@@ -294,6 +316,24 @@ impl PCScript {
         if let Some(section) = &self.sections[ScriptType::Object as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = Object::from_bytes((&section.entries[*idx].data, 0))
+                    .unwrap()
+                    .1;
+                return Some(script);
+            }
+        }
+        None
+    }
+
+    pub fn lookup_animdesc(&self, name: &str) -> Option<AnimDesc> {
+        //for i in 0..0x26 {
+        //if let Some(v) = &self.sections[i] {
+        //log(&format!("{} - {:#?}", i, v.lookup_map));
+        //}
+        //}
+
+        if let Some(section) = &self.sections[ScriptType::AnimDesc as usize] {
+            if let Some(idx) = section.lookup_map.get(name) {
+                let script = AnimDesc::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
                     .1;
                 return Some(script);

@@ -7,7 +7,7 @@ import { SceneGfx, ViewerRenderInput } from "../viewer";
 
 import { GfxRenderHelper } from "../gfx/render/GfxRenderHelper.js";
 import { fillMatrix4x3, fillMatrix4x4 } from "../gfx/helpers/UniformBufferHelpers.js";
-import { mat4, vec3 } from "gl-matrix";
+import { mat4, quat, vec3 } from "gl-matrix";
 import { GfxRenderInstList } from "../gfx/render/GfxRenderInstManager.js";
 import { makeBackbufferDescSimple, standardFullClearRenderPassDescriptor } from "../gfx/helpers/RenderGraphHelpers.js";
 import { GfxrAttachmentSlot } from "../gfx/render/GfxRenderGraph.js";
@@ -18,6 +18,8 @@ import { OpaqueShader } from "./shaders";
 import { loadPcScript } from "./script.js";
 import { WorldGeometry } from "./world.js";
 import { AssetManager } from "./assets.js";
+import { Anim } from "./anim.js";
+import { RedlineScriptObject } from "noclip-rust-support";
 
 export const pathBase = `Redline`;
 
@@ -26,9 +28,16 @@ class RedlineRenderInstList {
     public transparent: GfxRenderInstList = new GfxRenderInstList();
 }
 
-type RedlineAsset = Geo | undefined;
+type RedlineObject = {
+    static: Geo | undefined,
+    anim: Anim | undefined,
+    anim_scale: vec3,
+    anim_dir: number,
+};
 
-const attachmentStatesAdditive: GfxAttachmentState[] = [{
+type RedlineAsset = Geo | Anim | RedlineObject | undefined;
+
+export const attachmentStatesAdditive: GfxAttachmentState[] = [{
     alphaBlendState: {blendMode: GfxBlendMode.Add, blendDstFactor: GfxBlendFactor.One, blendSrcFactor: GfxBlendFactor.SrcAlpha},
     channelWriteMask: GfxChannelWriteMask.AllChannels,
     rgbBlendState: {blendMode: GfxBlendMode.Add, blendDstFactor: GfxBlendFactor.OneMinusSrc, blendSrcFactor: GfxBlendFactor.SrcAlpha}
@@ -108,6 +117,20 @@ export class RedlineRenderer implements SceneGfx {
         this.textureHolder.onnewtextures();
     }
 
+
+    private renderAnim(inst: RedlineRenderInstList, anim: Anim, pos: mat4, dir: number, time: number): void {
+        if (anim.sequential) {
+            const framerate = 15;
+            const frame = Math.round(time / (1000 / framerate /*anim.sequential.framerate*/)) % anim.sequential.frames.length;
+            const model = this.assets.get_geo(anim.sequential.frames[frame]);
+            if (model != undefined) {
+                this.renderModel(inst, model, pos);
+            }
+        } else {
+            // TODO
+        }
+    }
+
     private renderModel(inst: RedlineRenderInstList, model: Geo, pos: mat4): void {
         for (const mesh of model.meshes) {
             if (mesh.texture == "") continue;
@@ -168,14 +191,36 @@ export class RedlineRenderer implements SceneGfx {
         offs += fillMatrix4x4(data, offs, viewerInput.camera.clipFromWorldMatrix);
 
         for (const entity of this.to_render) {
-            const mdl = this.asset_table[entity.model_index]!;
+            const mdl = this.asset_table[entity.asset_index]!;
             if (mdl == undefined) {
                 // Script object or Animated
                 continue;
             }
             const model = mdl!;
 
-            this.renderModel(this.renderInstList, model, entity.mat);
+            if (model instanceof Geo) {
+                this.renderModel(this.renderInstList, model, entity.mat);
+            } else if (model instanceof Anim) {
+                this.renderAnim(this.renderInstList, model, entity.mat, 1, viewerInput.time);
+            } else if (model != null) {
+                if (model.anim != null) {
+                    const translate = vec3.create();
+                    const rotation = quat.create();
+                    const scale = vec3.create();
+                    mat4.getTranslation(translate, entity.mat);
+                    mat4.getRotation(rotation, entity.mat);
+                    mat4.getScaling(scale, entity.mat);
+
+                    vec3.multiply(scale, scale, model.anim_scale);
+                    const mat = mat4.create();
+                    mat4.fromRotationTranslationScale(mat, rotation, translate, scale);
+
+                    this.renderAnim(this.renderInstList, model.anim, mat, model.anim_dir, viewerInput.time);
+                }
+                if (model.static != null) {
+                    this.renderModel(this.renderInstList, model.static, entity.mat);
+                }
+            }
         }
 
         const builder = this.renderHelper.renderGraph.newGraphBuilder();
@@ -253,24 +298,38 @@ class RedlineSceneDesc implements SceneDesc {
             console.log(asset_table.length + " " + asset.name);
             let name = asset.name.toLowerCase();
             switch (asset.kind) {
-                case 2:
-                    const s = assets.scripts.lookup_object(name);
-                    if (s != undefined) {
-                        name = s.geo.toLowerCase().replace(".geo", "");
-                        if (s.unk9.name != "") {
-                            // Appears to be the spawn point of non-enemy NPCs.
-                            // Should override the default model
-                            name = "";
-                        }
-                    } else {
-                        name = "";
-                    }
-                    if (s != undefined) {
-                        s.free();
-                    }
                 case 0:
                     const model = await assets.load_geo(name, context);
                     asset_table.push(model);
+                    break;
+                case 1:
+                    const anim = await assets.load_anm(name, context);
+                    asset_table.push(anim);
+                    break;
+                case 2:
+                    const scriptObj = assets.scripts.lookup_object(name);
+                    if (!scriptObj) {
+                        asset_table.push(undefined);
+                        break;
+                    }
+                    let obj: RedlineObject = {static: undefined, anim: undefined, anim_scale: [1, 1, 1], anim_dir: 1};
+                    if (scriptObj.unk9.name == "") {
+                        obj.static = await assets.load_geo(scriptObj.geo, context);
+                    }
+                    asset_table.push(obj);
+                    const anim_name = scriptObj.unk6.name;
+                    if (anim_name != "") {
+                        const anim_desc = assets.scripts.lookup_animdesc(anim_name.toLowerCase());
+                        if (anim_desc != undefined) {
+                            obj.anim = await assets.load_anm(anim_desc.anim, context);
+                            obj.anim_dir = anim_desc.dir;
+                            if (anim_desc.scale_x != 0) // 0, 0, 0 seems to be used as a default
+                                obj.anim_scale = vec3.fromValues(anim_desc.scale_x, anim_desc.scale_y, anim_desc.scale_z);
+                            console.log(obj);
+                            anim_desc.free();
+                        }
+                    }
+                    scriptObj.free();
                     break;
                 default:
                     asset_table.push(undefined);
@@ -281,11 +340,16 @@ class RedlineSceneDesc implements SceneDesc {
             asset.free();
         }
 
-        const world_geo = assets.world.list_entities();
+        const world_geo = assets.world.list_models();
         const to_render = [];
         for (const geo of world_geo) {
             to_render.push(new WorldGeometry(geo));
             geo.free();
+        }
+        const world_anm = assets.world.list_anims();
+        for (const anm of world_anm) {
+            to_render.push(new WorldGeometry(anm));
+            anm.free();
         }
 
         return new RedlineRenderer(context, assets, asset_table, to_render);

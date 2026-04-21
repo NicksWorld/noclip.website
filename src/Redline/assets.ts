@@ -5,9 +5,11 @@ import { GfxDevice } from "../gfx/platform/GfxPlatform";
 import { pathBase } from "./scenes";
 import ArrayBufferSlice from "../ArrayBufferSlice";
 import { rust } from "../rustlib";
+import { Anim } from "./anim";
 
 export class AssetManager {
     public textures: Map<string, Texture> = new Map();
+    public animations: Map<string, Anim> = new Map();
     public geometry: Map<string, Geo> = new Map();
 
     public world: rust.RedlineWorld;
@@ -33,6 +35,9 @@ export class AssetManager {
         return raw;
     }
 
+    public get_anim(name: string): Anim | undefined {
+        return this.animations.get(this.formatFilename(name, "anm"));
+    }
     public get_texture(name: string): Texture | undefined {
         return this.textures.get(this.formatFilename(name, "btf", "tga"));
     }
@@ -64,6 +69,22 @@ export class AssetManager {
         const scripts = rust.RedlineScript.load(raw.createTypedArray(Uint8Array));
 
         return scripts;
+    }
+
+    public async load_anm(name: string, context: SceneContext): Promise<Anim | undefined> {
+        let raw = (await this.fetch(context, this.formatFilename(name, "anm")))!;
+
+        const anim = new Anim(name, context.device, raw);
+
+        if (anim.sequential) {
+            for (const frame of anim.sequential.frames) {
+                // Preload constituent frames
+                this.load_geo(frame, context);
+            }
+        }
+
+        this.animations.set(name, anim);
+        return anim;
     }
 
     public async load_texture(name: string, context: SceneContext): Promise<Texture | undefined> {

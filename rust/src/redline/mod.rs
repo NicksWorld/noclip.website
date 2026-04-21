@@ -1,5 +1,6 @@
 use deku::{ctx::Order, DekuError, DekuReader};
 
+mod anm;
 mod geo;
 mod pcscript;
 mod world;
