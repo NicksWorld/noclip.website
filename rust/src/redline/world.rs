@@ -126,7 +126,7 @@ pub struct Model {
     #[deku(cond = "version > 0x18")]
     unk8: u8,
     #[deku(cond = "version > 0x21")]
-    unk9: f32,
+    unk9: u32,
     #[deku(cond = "version > 0x23")]
     unk10: u32,
 }
@@ -451,8 +451,6 @@ fn read_world_entity<R: std::io::Read + std::io::Seek>(
             out[out.len() - 1]
         ));
     }
-
-    log(&format!("Entities: {:#?}", out));
 
     Ok(out)
 }

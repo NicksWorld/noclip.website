@@ -144,6 +144,16 @@ impl ScriptRef {
 
 #[derive(Debug, DekuRead)]
 #[allow(unused)]
+#[wasm_bindgen(js_name = "RedlineScriptSky", getter_with_clone, inspectable)]
+struct Sky {
+    #[deku(reader = "read_padded_string(deku::reader, 18)")]
+    pub name: String,
+    #[deku(reader = "read_padded_string(deku::reader, 36)")]
+    pub sky: String,
+}
+
+#[derive(Debug, DekuRead)]
+#[allow(unused)]
 #[wasm_bindgen(js_name = "RedlineScriptAnimDesc", getter_with_clone, inspectable)]
 struct AnimDesc {
     #[deku(reader = "read_padded_string(deku::reader, 18)")]
@@ -244,7 +254,7 @@ impl PCScript {
                 });
             }
 
-            if (section_id == 1) {
+            if (section_id == 17) {
                 log(&format!("DESC: {:#?}", section.descriptors));
             }
 
@@ -336,6 +346,16 @@ impl PCScript {
                 let script = AnimDesc::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
                     .1;
+                return Some(script);
+            }
+        }
+        None
+    }
+
+    pub fn lookup_sky(&self, name: &str) -> Option<Sky> {
+        if let Some(section) = &self.sections[ScriptType::Sky as usize] {
+            if let Some(idx) = section.lookup_map.get(name) {
+                let script = Sky::from_bytes((&section.entries[*idx].data, 0)).unwrap().1;
                 return Some(script);
             }
         }

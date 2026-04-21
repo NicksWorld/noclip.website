@@ -21,7 +21,7 @@ struct Mesh {
     pub render_flags: u8,
     unk2: u8,
     unk3: u16,
-    unk4: u32,
+    pub unk4: u32,
 }
 
 #[derive(DekuRead, Debug)]

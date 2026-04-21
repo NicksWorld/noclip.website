@@ -13,16 +13,23 @@ export type Mesh = {
     indexOffset: number,
     indexCount: number,
     renderFlags: number,
+    renderFlags2: number,
 }
 
 export class Geo {
     public indexBuffer: GfxBuffer;
     public vertexBuffer: GfxBuffer;
 
+    public hasBakedLighting: boolean;
+
     public meshes: Mesh[] = [];
 
-    constructor(name: string, device: GfxDevice, raw: ArrayBufferSlice) {
+    constructor(public name: string, device: GfxDevice, raw: ArrayBufferSlice) {
         const model = rust.RedlineGeo.load(raw.createTypedArray(Uint8Array));
+
+        // Models with filenames beginning with ! use vertex color as lighting
+        // Other models appear to fill it with garbage data
+        this.hasBakedLighting = name.startsWith("!");
 
         this.indexBuffer = createBufferFromData(
             device,
@@ -51,6 +58,7 @@ export class Geo {
                     indexOffset: m.index_offset,
                     indexCount: m.index_count,
                     renderFlags: m.render_flags,
+                    renderFlags2: m.unk4, // TODO: Verify
                 }
             );
 
