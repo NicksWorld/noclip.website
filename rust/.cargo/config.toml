@@ -3,3 +3,6 @@ git-fetch-with-cli = true
 
 [alias]
 wasm-bindgen = ["run", "--package", "cargo-bin", "--"]
+
+[env]
+TS_RS_EXPORT_DIR = { value = "pkg", relative = true }

@@ -410,12 +410,6 @@ pub enum WorldEntity {
     Unknown15(Entity15),
 }
 
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-}
-
 fn read_world_entity<R: std::io::Read + std::io::Seek>(
     reader: &mut deku::reader::Reader<R>,
     version: u32,
@@ -445,11 +439,6 @@ fn read_world_entity<R: std::io::Read + std::io::Seek>(
                 break;
             } // TODO
         });
-        log(&format!(
-            "Entity type: {}\n{:#?}",
-            tag[0],
-            out[out.len() - 1]
-        ));
     }
 
     Ok(out)

@@ -92,7 +92,7 @@
       ]
     },
     "build:wasm-debug": {
-      "command": "cd rust && cargo bin wasm-bindgen-cli target/wasm32-unknown-unknown/debug/noclip_rust_support.wasm --out-dir ./pkg --out-name index --target web",
+      "command": "cd rust && cargo test export_bindings && cargo bin wasm-bindgen-cli target/wasm32-unknown-unknown/debug/noclip_rust_support.wasm --out-dir ./pkg --out-name index --target web",
       "files": [
         "rust/target/wasm32-unknown-unknown/debug/noclip_rust_support.wasm"
       ],
@@ -117,7 +117,7 @@
       ]
     },
     "build:wasm-release": {
-      "command": "cd rust && cargo bin wasm-bindgen-cli target/wasm32-unknown-unknown/release/noclip-rust-support.opt.wasm --out-dir ./pkg --out-name index --target web",
+      "command": "cd rust && cargo test export_bindings && cargo bin wasm-bindgen-cli target/wasm32-unknown-unknown/release/noclip-rust-support.opt.wasm --out-dir ./pkg --out-name index --target web",
       "files": [
         "rust/target/wasm32-unknown-unknown/release/noclip-rust-support.opt.wasm"
       ],

@@ -1,9 +1,14 @@
 use deku::{ctx::Order, DekuError, DekuReader};
+use wasm_bindgen::prelude::*;
 
 mod anm;
 mod geo;
 mod pcscript;
 mod world;
+
+// Setup typescript re-exports from ts-rs generated types
+#[wasm_bindgen(typescript_custom_section)]
+const TS_APPEND: &'static str = "export * as Redline from './redline';";
 
 // Shared parsing logic used across file formats
 

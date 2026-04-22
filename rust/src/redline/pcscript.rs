@@ -1,4 +1,5 @@
-use deku::{ctx::Order, DekuContainerRead, DekuRead};
+use deku::{ctx::Order, DekuContainerRead, DekuError, DekuRead};
+use serde::Serialize;
 use std::{collections::HashMap, convert::TryInto};
 use wasm_bindgen::prelude::*;
 
@@ -26,12 +27,6 @@ struct ScriptSection {
 #[wasm_bindgen(js_name = "RedlineScript")]
 struct PCScript {
     sections: [Option<ScriptSection>; 0x28],
-}
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
 }
 
 struct RawCursor<'a> {
@@ -68,6 +63,7 @@ impl<'a> RawCursor<'a> {
 }
 
 #[derive(Debug, Clone)]
+#[allow(unused)]
 struct Descriptor {
     kind: u16,
     offset: u16,
@@ -76,6 +72,7 @@ struct Descriptor {
 }
 
 #[non_exhaustive]
+#[allow(unused)]
 enum ScriptType {
     Car = 0x0,
     Sky = 0x1,
@@ -100,6 +97,7 @@ enum ScriptType {
 // Handler method pointers are stored at 0x5CC794 + (id * 8).
 // Not every type has one, but those that do typically load or lookup a asset or script
 #[non_exhaustive]
+#[allow(unused)]
 enum DescriptorKind {
     Script = 0x0, // Looked up in section defined by field + 0x14
     Geometry = 0x1,
@@ -123,9 +121,10 @@ enum DescriptorKind {
     MultipleGeo = 0x19,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[allow(unused)]
 #[wasm_bindgen(js_name = "RedlineScriptRef", getter_with_clone, inspectable)]
+#[ts(export, export_to = "redline.ts", rename = "ScriptRef")]
 struct ScriptRef {
     pub name: String,
     pub kind: u16,
@@ -145,9 +144,9 @@ impl ScriptRef {
     }
 }
 
-#[derive(Debug, DekuRead)]
+#[derive(Debug, DekuRead, Serialize, ts_rs::TS)]
 #[allow(unused)]
-#[wasm_bindgen(js_name = "RedlineScriptSky", getter_with_clone, inspectable)]
+#[ts(export, export_to = "redline.rs", rename = "ScriptSky")]
 struct Sky {
     #[deku(reader = "read_padded_string(deku::reader, 18)")]
     pub name: String,
@@ -155,9 +154,9 @@ struct Sky {
     pub sky: String,
 }
 
-#[derive(Debug, DekuRead)]
+#[derive(Debug, DekuRead, Serialize, ts_rs::TS)]
 #[allow(unused)]
-#[wasm_bindgen(js_name = "RedlineScriptAnimDesc", getter_with_clone, inspectable)]
+#[ts(export, export_to = "redline.rs", rename = "ScriptAnimDesc")]
 struct AnimDesc {
     #[deku(reader = "read_padded_string(deku::reader, 18)")]
     pub name: String,
@@ -172,9 +171,9 @@ struct AnimDesc {
     pub scale_z: f32,
 }
 
-#[derive(Debug, DekuRead)]
+#[derive(Debug, DekuRead, Serialize, ts_rs::TS)]
 #[allow(unused)]
-#[wasm_bindgen(js_name = "RedlineScriptObject", getter_with_clone, inspectable)]
+#[ts(export, export_to = "redline.ts", rename = "ScriptObject")]
 struct Object {
     #[deku(reader = "read_padded_string(deku::reader, 18)")]
     pub name: String,
@@ -221,36 +220,57 @@ struct Object {
     pub emitter_rnd_release: i16,
 }
 
-#[derive(Clone, Debug, DekuRead)]
+#[derive(DekuRead, Clone, Debug, Serialize, ts_rs::TS)]
 #[allow(unused)]
-#[wasm_bindgen(js_name = "RedlineScriptArrayRef", getter_with_clone, inspectable)]
-struct ScriptArrayRef {
-    #[deku(
-        pad_bytes_before = "4",
-        reader = "read_padded_string(deku::reader, 16)"
-    )]
-    pub name: String,
+#[wasm_bindgen(js_name = "RedlineScriptArray", getter_with_clone, inspectable)]
+#[ts(export, export_to = "redline.ts", rename = "ScriptRefArray")]
+struct ScriptArray {
+    pub count: u16,
+    #[deku(pad_bytes_after = "4")]
+    pub kind: u16,
+    #[deku(skip)]
+    pub scripts: Vec<String>,
 }
 
-#[derive(Debug, DekuRead)]
+impl ScriptArray {
+    // Read script array refs
+    // The references are 20 bytes, the first 4 being a placeholder for the insertion of
+    // live pointers to the referenced scripts at runtime.
+    fn populate(&mut self, raw: &[u8]) -> usize {
+        for i in 0..self.count as usize {
+            self.scripts.push(
+                String::from_utf8_lossy(
+                    &raw[i * 20..]
+                        .into_iter()
+                        .cloned()
+                        .take(20)
+                        .skip(4)
+                        .take_while(|v| *v != 0)
+                        .collect::<Vec<u8>>(),
+                )
+                .to_string(),
+            )
+        }
+
+        20 * (self.count as usize)
+    }
+}
+
+#[derive(Debug, DekuRead, Serialize, ts_rs::TS)]
 #[allow(unused)]
-#[wasm_bindgen(js_name = "RedlineEmitterArray", getter_with_clone, inspectable)]
+#[ts(export, export_to = "redline.ts", rename = "ScriptEmitterArray")]
 struct EmitterArray {
     #[deku(reader = "read_padded_string(deku::reader, 18)")]
     pub name: String,
     pub repeat_count: u16,
-    pub script_count: u16,
-    pub script_kind: u16,
-    #[deku(skip)]
-    pub scripts: Vec<ScriptArrayRef>,
-    #[deku(pad_bytes_before = "4")]
+    pub scripts: ScriptArray,
     // Can be 0 or 1
     pub attach_to_launcher: u16,
 }
 
-#[derive(Debug, DekuRead)]
+#[derive(Debug, DekuRead, Serialize, ts_rs::TS)]
 #[allow(unused)]
-#[wasm_bindgen(js_name = "RedlineEmitter", getter_with_clone, inspectable)]
+#[ts(export, export_to = "redline.ts", rename = "ScriptEmitter")]
 struct Emitter {
     #[deku(reader = "read_padded_string(deku::reader, 18)")]
     pub name: String,
@@ -258,27 +278,14 @@ struct Emitter {
     pub sleep_count: u16,
 
     #[deku(pad_bytes_before = "2")]
-    pub unk1_count: u16,
-    pub unk1_kind: u16,
-    #[deku(skip)]
-    pub unk1_scripts: Vec<ScriptArrayRef>,
-
-    #[deku(pad_bytes_before = "4")]
-    pub unk2_count: u16,
-    pub unk2_kind: u16,
-    #[deku(skip)]
-    pub unk2_scripts: Vec<ScriptArrayRef>,
-
-    #[deku(pad_bytes_before = "4")]
-    pub unk3_count: u16,
-    pub unk3_kind: u16,
-    #[deku(skip)]
-    pub unk3_scripts: Vec<ScriptArrayRef>,
+    pub unk1: ScriptArray,
+    pub unk2: ScriptArray,
+    pub unk3: ScriptArray,
 }
 
-#[derive(Debug, DekuRead)]
+#[derive(Debug, DekuRead, Serialize, ts_rs::TS)]
 #[allow(unused)]
-#[wasm_bindgen(js_name = "RedlineSubEmitter", getter_with_clone, inspectable)]
+#[ts(export, export_to = "redline.ts", rename = "ScriptSubEmitter")]
 struct SubEmitter {
     #[deku(reader = "read_padded_string(deku::reader, 18)")]
     name: String,
@@ -304,16 +311,9 @@ struct SubEmitter {
     y_min_angle_range2: f32,
 
     #[deku(reader = "ScriptRef::read(deku::reader)")]
-    pub unk: ScriptRef,
-    pub script_count: u16,
-    pub script_kind: u16,
-    #[deku(skip)]
-    pub scripts: Vec<ScriptArrayRef>,
-    #[deku(pad_bytes_before = "4")]
-    pub script2_count: u16,
-    pub script2_kind: u16,
-    #[deku(skip)]
-    pub scripts2: Vec<ScriptArrayRef>,
+    unk: ScriptRef,
+    unk1: ScriptArray,
+    unk2: ScriptArray,
 }
 
 #[allow(unused)]
@@ -350,10 +350,6 @@ impl PCScript {
                     named: cursor.read_u16(),
                     name: cursor.read_padded_string(0x20),
                 });
-            }
-
-            if (section_id == 19) {
-                log(&format!("DESC: {:#?}", section.descriptors));
             }
 
             // Header before entries
@@ -420,146 +416,89 @@ impl PCScript {
         script
     }
 
-    pub fn lookup_object(&self, name: &str) -> Option<Object> {
+    #[wasm_bindgen(unchecked_return_type = "Redline.ScriptObject | undefined")]
+    pub fn lookup_object(&self, name: &str) -> JsValue {
         if let Some(section) = &self.sections[ScriptType::Object as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = Object::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
                     .1;
-                log(&format!("{:#?}", script));
-                return Some(script);
+                return serde_wasm_bindgen::to_value(&script).unwrap();
             }
         }
-        None
+        JsValue::undefined()
     }
 
-    pub fn lookup_animdesc(&self, name: &str) -> Option<AnimDesc> {
+    #[wasm_bindgen(unchecked_return_type = "Redline.ScriptAnimDesc | undefined")]
+    pub fn lookup_animdesc(&self, name: &str) -> JsValue {
         if let Some(section) = &self.sections[ScriptType::AnimDesc as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = AnimDesc::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
                     .1;
-                return Some(script);
+                return serde_wasm_bindgen::to_value(&script).unwrap();
             }
         }
-        None
+        JsValue::undefined()
     }
 
-    pub fn lookup_sky(&self, name: &str) -> Option<Sky> {
+    #[wasm_bindgen(unchecked_return_type = "Redline.ScriptSky | undefined")]
+    pub fn lookup_sky(&self, name: &str) -> JsValue {
         if let Some(section) = &self.sections[ScriptType::Sky as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = Sky::from_bytes((&section.entries[*idx].data, 0)).unwrap().1;
-                return Some(script);
+                return serde_wasm_bindgen::to_value(&script).unwrap();
             }
         }
-        None
+        JsValue::undefined()
     }
 
-    pub fn lookup_script_array(&self, name: &str) -> Option<EmitterArray> {
+    #[wasm_bindgen(unchecked_return_type = "Redline.ScriptEmitterArray | undefined")]
+    pub fn lookup_emitter_array(&self, name: &str) -> JsValue {
         if let Some(section) = &self.sections[ScriptType::EmitterArray as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let mut script = EmitterArray::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
                     .1;
 
-                for i in 0..script.script_count as usize {
-                    script.scripts.push(
-                        ScriptArrayRef::from_bytes((
-                            &section.entries[*idx].ext_data[i * 0x14..],
-                            0,
-                        ))
-                        .unwrap()
-                        .1,
-                    );
-                }
-                return Some(script);
+                let mut off = script.scripts.populate(&section.entries[*idx].ext_data);
+                return serde_wasm_bindgen::to_value(&script).unwrap();
             }
         }
-        None
+        JsValue::undefined()
     }
 
-    pub fn lookup_emitter(&self, name: &str) -> Option<Emitter> {
+    #[wasm_bindgen(unchecked_return_type = "Redline.ScriptEmitter | undefined")]
+    pub fn lookup_emitter(&self, name: &str) -> JsValue {
         if let Some(section) = &self.sections[ScriptType::Emitter as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let mut script = Emitter::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
                     .1;
 
-                let mut i = 0;
-                for _ in 0..script.unk1_count as usize {
-                    script.unk1_scripts.push(
-                        ScriptArrayRef::from_bytes((
-                            &section.entries[*idx].ext_data[i * 0x14..],
-                            0,
-                        ))
-                        .unwrap()
-                        .1,
-                    );
-                    i += 1;
-                }
-                for _ in 0..script.unk2_count as usize {
-                    script.unk2_scripts.push(
-                        ScriptArrayRef::from_bytes((
-                            &section.entries[*idx].ext_data[i * 0x14..],
-                            0,
-                        ))
-                        .unwrap()
-                        .1,
-                    );
-                    i += 1;
-                }
-                for _ in 0..script.unk3_count as usize {
-                    script.unk3_scripts.push(
-                        ScriptArrayRef::from_bytes((
-                            &section.entries[*idx].ext_data[i * 0x14..],
-                            0,
-                        ))
-                        .unwrap()
-                        .1,
-                    );
-                    i += 1;
-                }
-                log(&format!("LOOKUP_SCRIPT {:#?}", script));
-                return Some(script);
+                let mut off = script.unk1.populate(&section.entries[*idx].ext_data);
+                off += script.unk2.populate(&section.entries[*idx].ext_data[off..]);
+                off += script.unk3.populate(&section.entries[*idx].ext_data[off..]);
+
+                return serde_wasm_bindgen::to_value(&script).unwrap();
             }
         }
-        None
+        JsValue::undefined()
     }
 
-    pub fn lookup_subemitter(&self, name: &str) -> Option<SubEmitter> {
+    #[wasm_bindgen(unchecked_return_type = "Redline.ScriptSubEmitter | undefined")]
+    pub fn lookup_subemitter(&self, name: &str) -> JsValue {
         if let Some(section) = &self.sections[19] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let mut script = SubEmitter::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
                     .1;
 
-                let mut i = 0;
-                for _ in 0..script.script_count as usize {
-                    script.scripts.push(
-                        ScriptArrayRef::from_bytes((
-                            &section.entries[*idx].ext_data[i * 0x14..],
-                            0,
-                        ))
-                        .unwrap()
-                        .1,
-                    );
-                    i += 1;
-                }
-                for _ in 0..script.script2_count as usize {
-                    script.scripts2.push(
-                        ScriptArrayRef::from_bytes((
-                            &section.entries[*idx].ext_data[i * 0x14..],
-                            0,
-                        ))
-                        .unwrap()
-                        .1,
-                    );
-                    i += 1;
-                }
-                log(&format!("LOOKUP_SCRIPT2 {:#?}", script));
-                return Some(script);
+                let mut off = script.unk1.populate(&section.entries[*idx].ext_data);
+                off += script.unk2.populate(&section.entries[*idx].ext_data[off..]);
+                return serde_wasm_bindgen::to_value(&script).unwrap();
             }
         }
-        None
+        JsValue::undefined()
     }
 }

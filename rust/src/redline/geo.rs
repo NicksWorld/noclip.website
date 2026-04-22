@@ -1,26 +1,27 @@
 use deku::{DekuContainerRead, DekuRead};
 use js_sys::{ArrayBuffer, Uint8Array};
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 use crate::redline::read_padded_string;
 
-#[derive(Clone, DekuRead, Debug)]
-#[wasm_bindgen(js_name = "RedlineMesh", getter_with_clone)]
+#[derive(DekuRead, ts_rs::TS, Serialize)]
 #[allow(unused)]
+#[ts(export, export_to = "redline.ts")]
 struct Mesh {
     #[deku(reader = "read_padded_string(deku::reader, 50)")]
     pub texture: String,
     #[deku(reader = "read_padded_string(deku::reader, 40)")]
     pub name: String,
-    unk: u16,
+    pub unk: u16,
     pub color: u32,
     pub vertex_offset: u16,
     pub vertex_count: u16,
     pub index_offset: u16,
     pub index_count: u16,
     pub render_flags: u8,
-    unk2: u8,
-    unk3: u16,
+    pub unk2: u8,
+    pub unk3: u16,
     pub unk4: u32,
 }
 
@@ -37,7 +38,7 @@ impl Vertex {
     pub const SIZE: usize = 36;
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead)]
 #[wasm_bindgen(js_name = "RedlineGeo")]
 #[allow(unused)]
 struct Geo {
@@ -65,6 +66,7 @@ struct Geo {
 }
 
 #[wasm_bindgen(js_class = "RedlineGeo")]
+#[allow(unused)]
 impl Geo {
     pub fn load(raw: &[u8]) -> Geo {
         // TODO: Do post-processing on the vertex buffer, such as setting color to 0xFFFFFFFF for
@@ -86,7 +88,8 @@ impl Geo {
         buf.buffer()
     }
 
-    pub fn meshes(&self) -> Vec<Mesh> {
-        self.meshes.clone()
+    #[wasm_bindgen(unchecked_return_type = "Redline.Mesh[]")]
+    pub fn meshes(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.meshes).unwrap()
     }
 }

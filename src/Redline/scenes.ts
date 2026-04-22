@@ -19,8 +19,6 @@ import { loadPcScript } from "./script.js";
 import { WorldGeometry } from "./world.js";
 import { AssetManager } from "./assets.js";
 import { Anim } from "./anim.js";
-import { RedlineScriptObject } from "noclip-rust-support";
-import { CullMode } from "../gx/gx_enum.js";
 
 export const pathBase = `Redline`;
 
@@ -130,8 +128,8 @@ export class RedlineRenderer implements SceneGfx {
 
     private renderAnim(inst: RedlineRenderInstList, anim: Anim, pos: mat4, transparent: boolean, dir: number, time: number): void {
         if (anim.sequential) {
-            const framerate = 15;
-            const frame = Math.round(time / (1000 / framerate /*anim.sequential.framerate*/)) % anim.sequential.frames.length;
+            const framerate = anim.sequential.framerate;
+            const frame = Math.floor(time * framerate / 1000) % anim.sequential.frames.length;
             const model = this.assets.get_geo(anim.sequential.frames[frame]);
             if (model != undefined) {
                 this.renderModel(inst, model, pos, transparent);
@@ -151,7 +149,7 @@ export class RedlineRenderer implements SceneGfx {
             let inst_list = inst.opaque;
 
             // Determine correct shader setup
-            if ((mesh.renderFlags & 0x01) != 0 || transparent) {
+            if ((mesh.render_flags & 0x01) != 0 || transparent) {
                 renderInst.setMegaStateFlags({
                     depthWrite: false,
                     attachmentsState: attachmentStatesAdditive,
@@ -166,8 +164,8 @@ export class RedlineRenderer implements SceneGfx {
                     attachmentsState: attachmentStates,
                 });
             }
-            // renderFlags2 0x10000 appears to be the flag for vertex color baked lighting
-            if (mesh.renderFlags & 0x4 || ((mesh.renderFlags2 & 0x10000) == 0)) {
+            // unk4 0x10000 appears to be the flag for vertex color baked lighting
+            if (mesh.render_flags & 0x4 || ((mesh.unk4 & 0x10000) == 0)) {
                 renderInst.setGfxProgram(this.fullbrightShaderProgram);
             } else {
                 renderInst.setGfxProgram(this.vertexLitShaderProgram);
@@ -185,11 +183,11 @@ export class RedlineRenderer implements SceneGfx {
 
             renderInst.setVertexInput(
                 this.inputLayout,
-                [{ buffer: model.vertexBuffer, byteOffset: mesh.vertexOffset * 9 * 4 }],
-                { buffer: model.indexBuffer, byteOffset: mesh.indexOffset * 2 },
+                [{ buffer: model.vertexBuffer, byteOffset: mesh.vertex_offset * 9 * 4 }],
+                { buffer: model.indexBuffer, byteOffset: mesh.index_offset * 2 },
             );
 
-            renderInst.setDrawCount(mesh.indexCount * 3);
+            renderInst.setDrawCount(mesh.index_count * 3);
             inst_list.submitRenderInst(renderInst);
         }
     }
@@ -339,6 +337,7 @@ class RedlineSceneDesc implements SceneDesc {
                     break;
                 case 2:
                     const scriptObj = assets.scripts.lookup_object(name);
+                    console.log(scriptObj);
                     if (!scriptObj) {
                         asset_table.push(undefined);
                         break;
@@ -356,24 +355,19 @@ class RedlineSceneDesc implements SceneDesc {
                             obj.anim_dir = anim_desc.dir;
                             if (anim_desc.scale_x != 0) // 0, 0, 0 seems to be used as a default
                                 obj.anim_scale = vec3.fromValues(anim_desc.scale_x, anim_desc.scale_y, anim_desc.scale_z);
-                            anim_desc.free();
                         }
                     }
 
                     if (scriptObj.unk8.name != "") {
-                        const s = assets.scripts.lookup_script_array(scriptObj.unk8.name.toLowerCase());
-                        if (s && s.scripts[0]) {
-                            const x = assets.scripts.lookup_emitter(s.scripts[0]!.name.toLowerCase());
+                        const s = assets.scripts.lookup_emitter_array(scriptObj.unk8.name.toLowerCase());
+                        if (s && s.scripts.scripts[0]) {
+                            const x = assets.scripts.lookup_emitter(s.scripts.scripts[0]!.toLowerCase());
                             console.log(x);
-                            if (x && x.unk1_scripts[0]) {
-                                const y = assets.scripts.lookup_subemitter(x.unk1_scripts[0].name.toLowerCase());
+                            if (x && x.unk1.scripts[0]) {
+                                const y = assets.scripts.lookup_subemitter(x.unk1.scripts[0].toLowerCase());
                             }
-
                         }
-                        if (s) s.free();
                     }
-
-                    scriptObj.free();
                     break;
                 default:
                     asset_table.push(undefined);
@@ -389,7 +383,6 @@ class RedlineSceneDesc implements SceneDesc {
         const ssky = assets.scripts.lookup_sky(sky_name.toLowerCase());
         if (ssky != undefined) {
             sky = ssky.sky;
-            ssky.free();
             sky = await assets.load_geo(sky, context);
         }
 

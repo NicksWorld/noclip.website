@@ -4,25 +4,13 @@ import { GfxDevice, GfxBuffer, GfxBufferUsage, GfxBufferFrequencyHint } from "..
 import ArrayBufferSlice from "../ArrayBufferSlice";
 import { createBufferFromData } from "../gfx/helpers/BufferHelpers.js";
 
-export type Mesh = {
-    texture: string,
-    name: string,
-    color: number,
-    vertexOffset: number,
-    vertexCount: number,
-    indexOffset: number,
-    indexCount: number,
-    renderFlags: number,
-    renderFlags2: number,
-}
-
 export class Geo {
     public indexBuffer: GfxBuffer;
     public vertexBuffer: GfxBuffer;
 
     public hasBakedLighting: boolean;
 
-    public meshes: Mesh[] = [];
+    public meshes: rust.Redline.Mesh[] = [];
 
     constructor(public name: string, device: GfxDevice, raw: ArrayBufferSlice) {
         const model = rust.RedlineGeo.load(raw.createTypedArray(Uint8Array));
@@ -46,24 +34,7 @@ export class Geo {
         );
         device.setResourceName(this.vertexBuffer, `${name} (VERTEX)`);
 
-        const rawMeshes = model.meshes();
-        for (const m of rawMeshes) {
-            this.meshes.push(
-                {
-                    texture: m.texture,
-                    name: m.name,
-                    color: m.color,
-                    vertexOffset: m.vertex_offset,
-                    vertexCount: m.vertex_count,
-                    indexOffset: m.index_offset,
-                    indexCount: m.index_count,
-                    renderFlags: m.render_flags,
-                    renderFlags2: m.unk4, // TODO: Verify
-                }
-            );
-
-            m.free();
-        }
+        this.meshes = model.meshes();
 
         model.free();
     }
