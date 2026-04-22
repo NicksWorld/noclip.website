@@ -87,6 +87,8 @@ enum ScriptType {
     AnimDesc = 0xC, // Unverified
     SFX = 0xE,
     Sprite = 0xF,
+    EmitterArray = 0x11,
+    Emitter = 0x12,
     CarCollision = 0x14, // Unverified - Car collision spin/elasticity
     Item = 0x17,
     CameraShake = 0x26,
@@ -108,7 +110,8 @@ enum DescriptorKind {
     Sprite = 0x9,
     Float = 0xA, // f32 type
     // See FUN_0052e956 for init handler
-    ArraySomething = 0xC,
+    // data is count, extdata is i16 script section, followed by string name
+    ScriptArray = 0xC,
     ArraySomethingElse = 0xE,         // Array, looked up in section 6
     ArraySomethingElseEntirely = 0xF, // Array, looked up in section 11 (0xB)
     DoNothing = 0x12,                 // Handler just returns 1?
@@ -213,9 +216,104 @@ struct Object {
     #[deku(reader = "ScriptRef::read(deku::reader)")]
     pub unk8: ScriptRef,
     #[deku(reader = "ScriptRef::read(deku::reader)")]
-    pub unk9: ScriptRef,
+    pub anim: ScriptRef,
     pub visible_range: f32,
     pub emitter_rnd_release: i16,
+}
+
+#[derive(Clone, Debug, DekuRead)]
+#[allow(unused)]
+#[wasm_bindgen(js_name = "RedlineScriptArrayRef", getter_with_clone, inspectable)]
+struct ScriptArrayRef {
+    #[deku(
+        pad_bytes_before = "4",
+        reader = "read_padded_string(deku::reader, 16)"
+    )]
+    pub name: String,
+}
+
+#[derive(Debug, DekuRead)]
+#[allow(unused)]
+#[wasm_bindgen(js_name = "RedlineEmitterArray", getter_with_clone, inspectable)]
+struct EmitterArray {
+    #[deku(reader = "read_padded_string(deku::reader, 18)")]
+    pub name: String,
+    pub repeat_count: u16,
+    pub script_count: u16,
+    pub script_kind: u16,
+    #[deku(skip)]
+    pub scripts: Vec<ScriptArrayRef>,
+    #[deku(pad_bytes_before = "4")]
+    // Can be 0 or 1
+    pub attach_to_launcher: u16,
+}
+
+#[derive(Debug, DekuRead)]
+#[allow(unused)]
+#[wasm_bindgen(js_name = "RedlineEmitter", getter_with_clone, inspectable)]
+struct Emitter {
+    #[deku(reader = "read_padded_string(deku::reader, 18)")]
+    pub name: String,
+    pub repeat_count: u16,
+    pub sleep_count: u16,
+
+    #[deku(pad_bytes_before = "2")]
+    pub unk1_count: u16,
+    pub unk1_kind: u16,
+    #[deku(skip)]
+    pub unk1_scripts: Vec<ScriptArrayRef>,
+
+    #[deku(pad_bytes_before = "4")]
+    pub unk2_count: u16,
+    pub unk2_kind: u16,
+    #[deku(skip)]
+    pub unk2_scripts: Vec<ScriptArrayRef>,
+
+    #[deku(pad_bytes_before = "4")]
+    pub unk3_count: u16,
+    pub unk3_kind: u16,
+    #[deku(skip)]
+    pub unk3_scripts: Vec<ScriptArrayRef>,
+}
+
+#[derive(Debug, DekuRead)]
+#[allow(unused)]
+#[wasm_bindgen(js_name = "RedlineSubEmitter", getter_with_clone, inspectable)]
+struct SubEmitter {
+    #[deku(reader = "read_padded_string(deku::reader, 18)")]
+    name: String,
+    repeat_event: i16,
+    xz_damp: f32,
+    y_damp: f32,
+    xz_min_speed: f32,
+    xz_speed_range: f32,
+    xz_min_angle: i16,
+    xz_angle_range: i16,
+    xz_angle_incr: i16,
+    #[deku(pad_bytes_before = "2")]
+    y_min_speed: f32,
+    y_speed_range: f32,
+    y_gravity: f32,
+    y_offset: f32,
+    y_offset_range: f32,
+    x_offset_range: f32,
+    z_offset_range: f32,
+    // Following are one descriptor, type uncertain
+    #[deku(pad_bytes_before = "96 - 80")]
+    y_min_angle_range: f32,
+    y_min_angle_range2: f32,
+
+    #[deku(reader = "ScriptRef::read(deku::reader)")]
+    pub unk: ScriptRef,
+    pub script_count: u16,
+    pub script_kind: u16,
+    #[deku(skip)]
+    pub scripts: Vec<ScriptArrayRef>,
+    #[deku(pad_bytes_before = "4")]
+    pub script2_count: u16,
+    pub script2_kind: u16,
+    #[deku(skip)]
+    pub scripts2: Vec<ScriptArrayRef>,
 }
 
 #[allow(unused)]
@@ -254,7 +352,7 @@ impl PCScript {
                 });
             }
 
-            if (section_id == 17) {
+            if (section_id == 19) {
                 log(&format!("DESC: {:#?}", section.descriptors));
             }
 
@@ -328,6 +426,7 @@ impl PCScript {
                 let script = Object::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
                     .1;
+                log(&format!("{:#?}", script));
                 return Some(script);
             }
         }
@@ -335,12 +434,6 @@ impl PCScript {
     }
 
     pub fn lookup_animdesc(&self, name: &str) -> Option<AnimDesc> {
-        //for i in 0..0x26 {
-        //if let Some(v) = &self.sections[i] {
-        //log(&format!("{} - {:#?}", i, v.lookup_map));
-        //}
-        //}
-
         if let Some(section) = &self.sections[ScriptType::AnimDesc as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = AnimDesc::from_bytes((&section.entries[*idx].data, 0))
@@ -356,6 +449,114 @@ impl PCScript {
         if let Some(section) = &self.sections[ScriptType::Sky as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = Sky::from_bytes((&section.entries[*idx].data, 0)).unwrap().1;
+                return Some(script);
+            }
+        }
+        None
+    }
+
+    pub fn lookup_script_array(&self, name: &str) -> Option<EmitterArray> {
+        if let Some(section) = &self.sections[ScriptType::EmitterArray as usize] {
+            if let Some(idx) = section.lookup_map.get(name) {
+                let mut script = EmitterArray::from_bytes((&section.entries[*idx].data, 0))
+                    .unwrap()
+                    .1;
+
+                for i in 0..script.script_count as usize {
+                    script.scripts.push(
+                        ScriptArrayRef::from_bytes((
+                            &section.entries[*idx].ext_data[i * 0x14..],
+                            0,
+                        ))
+                        .unwrap()
+                        .1,
+                    );
+                }
+                return Some(script);
+            }
+        }
+        None
+    }
+
+    pub fn lookup_emitter(&self, name: &str) -> Option<Emitter> {
+        if let Some(section) = &self.sections[ScriptType::Emitter as usize] {
+            if let Some(idx) = section.lookup_map.get(name) {
+                let mut script = Emitter::from_bytes((&section.entries[*idx].data, 0))
+                    .unwrap()
+                    .1;
+
+                let mut i = 0;
+                for _ in 0..script.unk1_count as usize {
+                    script.unk1_scripts.push(
+                        ScriptArrayRef::from_bytes((
+                            &section.entries[*idx].ext_data[i * 0x14..],
+                            0,
+                        ))
+                        .unwrap()
+                        .1,
+                    );
+                    i += 1;
+                }
+                for _ in 0..script.unk2_count as usize {
+                    script.unk2_scripts.push(
+                        ScriptArrayRef::from_bytes((
+                            &section.entries[*idx].ext_data[i * 0x14..],
+                            0,
+                        ))
+                        .unwrap()
+                        .1,
+                    );
+                    i += 1;
+                }
+                for _ in 0..script.unk3_count as usize {
+                    script.unk3_scripts.push(
+                        ScriptArrayRef::from_bytes((
+                            &section.entries[*idx].ext_data[i * 0x14..],
+                            0,
+                        ))
+                        .unwrap()
+                        .1,
+                    );
+                    i += 1;
+                }
+                log(&format!("LOOKUP_SCRIPT {:#?}", script));
+                return Some(script);
+            }
+        }
+        None
+    }
+
+    pub fn lookup_subemitter(&self, name: &str) -> Option<SubEmitter> {
+        if let Some(section) = &self.sections[19] {
+            if let Some(idx) = section.lookup_map.get(name) {
+                let mut script = SubEmitter::from_bytes((&section.entries[*idx].data, 0))
+                    .unwrap()
+                    .1;
+
+                let mut i = 0;
+                for _ in 0..script.script_count as usize {
+                    script.scripts.push(
+                        ScriptArrayRef::from_bytes((
+                            &section.entries[*idx].ext_data[i * 0x14..],
+                            0,
+                        ))
+                        .unwrap()
+                        .1,
+                    );
+                    i += 1;
+                }
+                for _ in 0..script.script2_count as usize {
+                    script.scripts2.push(
+                        ScriptArrayRef::from_bytes((
+                            &section.entries[*idx].ext_data[i * 0x14..],
+                            0,
+                        ))
+                        .unwrap()
+                        .1,
+                    );
+                    i += 1;
+                }
+                log(&format!("LOOKUP_SCRIPT2 {:#?}", script));
                 return Some(script);
             }
         }

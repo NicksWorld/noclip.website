@@ -45,9 +45,9 @@ export const attachmentStatesAdditive: GfxAttachmentState[] = [{
     rgbBlendState: {blendMode: GfxBlendMode.Add, blendDstFactor: GfxBlendFactor.OneMinusSrc, blendSrcFactor: GfxBlendFactor.SrcAlpha}
 }];
 export const attachmentStates: GfxAttachmentState[] = [{
-    alphaBlendState: {blendMode: GfxBlendMode.Add, blendDstFactor: GfxBlendFactor.One, blendSrcFactor: GfxBlendFactor.Zero},
+    alphaBlendState: {blendMode: GfxBlendMode.Add, blendDstFactor: GfxBlendFactor.OneMinusDstAlpha, blendSrcFactor: GfxBlendFactor.DstAlpha},
     channelWriteMask: GfxChannelWriteMask.AllChannels,
-    rgbBlendState: {blendMode: GfxBlendMode.Add, blendDstFactor: GfxBlendFactor.OneMinusSrcAlpha, blendSrcFactor: GfxBlendFactor.SrcAlpha}
+    rgbBlendState: {blendMode: GfxBlendMode.Add, blendDstFactor: GfxBlendFactor.OneMinusDstAlpha, blendSrcFactor: GfxBlendFactor.DstAlpha}
 }];
 
 export class RedlineRenderer implements SceneGfx {
@@ -344,7 +344,7 @@ class RedlineSceneDesc implements SceneDesc {
                         break;
                     }
                     let obj: RedlineObject = {static: undefined, anim: undefined, anim_scale: [1, 1, 1], anim_dir: 1, transparent: scriptObj.transparent != 0};
-                    if (scriptObj.unk9.name == "") {
+                    if (scriptObj.anim.name == "") {
                         obj.static = await assets.load_geo(scriptObj.geo, context);
                     }
                     asset_table.push(obj);
@@ -359,6 +359,20 @@ class RedlineSceneDesc implements SceneDesc {
                             anim_desc.free();
                         }
                     }
+
+                    if (scriptObj.unk8.name != "") {
+                        const s = assets.scripts.lookup_script_array(scriptObj.unk8.name.toLowerCase());
+                        if (s && s.scripts[0]) {
+                            const x = assets.scripts.lookup_emitter(s.scripts[0]!.name.toLowerCase());
+                            console.log(x);
+                            if (x && x.unk1_scripts[0]) {
+                                const y = assets.scripts.lookup_subemitter(x.unk1_scripts[0].name.toLowerCase());
+                            }
+
+                        }
+                        if (s) s.free();
+                    }
+
                     scriptObj.free();
                     break;
                 default:
