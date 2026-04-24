@@ -62,8 +62,9 @@ impl<'a> RawCursor<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "ScriptDescriptor")]
 struct Descriptor {
     kind: u16,
     offset: u16,
@@ -81,11 +82,12 @@ enum ScriptType {
     Person = 0x7,
     Projectile = 0x8, // Unverified - very uncertain
     Object = 0x9,
-    AnimDesc = 0xC, // Unverified
+    AnimDesc = 0xC,
     SFX = 0xE,
     Sprite = 0xF,
     EmitterArray = 0x11,
     Emitter = 0x12,
+    SubEmitter = 0x13,
     CarCollision = 0x14, // Unverified - Car collision spin/elasticity
     Item = 0x17,
     CameraShake = 0x26,
@@ -146,7 +148,7 @@ impl ScriptRef {
 
 #[derive(Debug, DekuRead, Serialize, ts_rs::TS)]
 #[allow(unused)]
-#[ts(export, export_to = "redline.rs", rename = "ScriptSky")]
+#[ts(export, export_to = "redline.ts", rename = "ScriptSky")]
 struct Sky {
     #[deku(reader = "read_padded_string(deku::reader, 18)")]
     pub name: String,
@@ -156,7 +158,7 @@ struct Sky {
 
 #[derive(Debug, DekuRead, Serialize, ts_rs::TS)]
 #[allow(unused)]
-#[ts(export, export_to = "redline.rs", rename = "ScriptAnimDesc")]
+#[ts(export, export_to = "redline.ts", rename = "ScriptAnimDesc")]
 struct AnimDesc {
     #[deku(reader = "read_padded_string(deku::reader, 18)")]
     pub name: String,
@@ -302,6 +304,9 @@ struct SubEmitter {
     y_speed_range: f32,
     y_gravity: f32,
     y_offset: f32,
+    x_offset: f32,
+    z_offset: f32,
+
     y_offset_range: f32,
     x_offset_range: f32,
     z_offset_range: f32,
@@ -314,6 +319,72 @@ struct SubEmitter {
     unk: ScriptRef,
     unk1: ScriptArray,
     unk2: ScriptArray,
+}
+
+#[derive(Debug, DekuRead, Serialize, ts_rs::TS)]
+#[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "ScriptSprite")]
+struct Sprite {
+    #[deku(reader = "read_padded_string(deku::reader, 18)")]
+    name: String,
+    //#[deku(
+    //    pad_bytes_before = "2",
+    //    reader = "read_padded_string(deku::reader, 68 - 20)"
+    //)]
+    //sprite: String,
+    #[deku(
+        pad_bytes_before = "2",
+        reader = "read_padded_string(deku::reader, 0x24)"
+    )]
+    sprite_name: String,
+    // Divisions separating individual frames?
+    sprite_div_x: i8,
+    sprite_div_y: i8,
+
+    // Scale or texture size? Unsure.
+    sprite_sizing: i16,
+    // No clue, typically 0
+    sprite_unk4: i16,
+    // No clue, typically 1
+    sprite_unk5: i16,
+
+    #[deku(pad_bytes_before = "4")]
+    #[deku(reader = "read_padded_string(deku::reader, 172 - 68)")]
+    sprite2: String,
+
+    zbuffer_test: i16,
+    #[deku(pad_bytes_before = "2")]
+    initial_scale: f32,
+    scale1_add_target: f32,
+    scale1_add_target2: f32,
+    fuse: i16,
+    collision: i16,
+    last_frame_hold_flag: i16,
+    frame_hold_amount: i16,
+    priority: i16,
+    rgb: u32,
+    // Probably not split right
+    rotation_init_add: u16,
+    rotation_init_add2: u32,
+
+    scale2_add_target: f32,
+    scale2_add_target2: f32,
+
+    y_speed_init_random_add: u32,
+    y_speed_init_random_add2: u32,
+
+    fade_speed: i16,
+    fade_delay: i16,
+    final_rgb: u32,
+    fade_delay2: i16,
+    #[deku(pad_bytes_before = "2")]
+    gravity: f32,
+    fade_speed_2: i16,
+    final_rgb2: u32,
+
+    #[deku(pad_bytes_before = "2")]
+    xz_speed_init_add: u32,
+    xz_speed_init_add2: u32,
 }
 
 #[allow(unused)]
@@ -416,6 +487,14 @@ impl PCScript {
         script
     }
 
+    #[wasm_bindgen(unchecked_return_type = "Redline.ScriptDescriptor | undefined")]
+    pub fn lookup_descriptor(&self, section: usize) -> JsValue {
+        if let Some(section) = &self.sections[section] {
+            return serde_wasm_bindgen::to_value(&section.descriptors).unwrap();
+        }
+        JsValue::undefined()
+    }
+
     #[wasm_bindgen(unchecked_return_type = "Redline.ScriptObject | undefined")]
     pub fn lookup_object(&self, name: &str) -> JsValue {
         if let Some(section) = &self.sections[ScriptType::Object as usize] {
@@ -447,6 +526,19 @@ impl PCScript {
         if let Some(section) = &self.sections[ScriptType::Sky as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = Sky::from_bytes((&section.entries[*idx].data, 0)).unwrap().1;
+                return serde_wasm_bindgen::to_value(&script).unwrap();
+            }
+        }
+        JsValue::undefined()
+    }
+
+    #[wasm_bindgen(unchecked_return_type = "Redline.ScriptSprite | undefined")]
+    pub fn lookup_sprite(&self, name: &str) -> JsValue {
+        if let Some(section) = &self.sections[ScriptType::Sprite as usize] {
+            if let Some(idx) = section.lookup_map.get(name) {
+                let script = Sprite::from_bytes((&section.entries[*idx].data, 0))
+                    .unwrap()
+                    .1;
                 return serde_wasm_bindgen::to_value(&script).unwrap();
             }
         }
@@ -488,7 +580,7 @@ impl PCScript {
 
     #[wasm_bindgen(unchecked_return_type = "Redline.ScriptSubEmitter | undefined")]
     pub fn lookup_subemitter(&self, name: &str) -> JsValue {
-        if let Some(section) = &self.sections[19] {
+        if let Some(section) = &self.sections[ScriptType::SubEmitter as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let mut script = SubEmitter::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
