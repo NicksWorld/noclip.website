@@ -8,7 +8,10 @@ mod world;
 
 // Setup typescript re-exports from ts-rs generated types
 #[wasm_bindgen(typescript_custom_section)]
-const TS_APPEND: &'static str = "export * as Redline from './redline';";
+const TS_APPEND: &'static str = r#"
+import * as Redline from './redline';
+export { Redline };
+"#;
 
 // Shared parsing logic used across file formats
 

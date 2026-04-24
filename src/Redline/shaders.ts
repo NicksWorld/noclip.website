@@ -75,3 +75,57 @@ void main() {
 }
 `;
 }
+
+export class SpriteShader extends DeviceProgram {
+    public static a_Corner = 0;
+    public static a_Uv = 1;
+
+    public static ub_SceneParams = 0;
+    public static ub_Position = 1;
+
+    public override vert = `
+${VertexLitShader.Common}
+
+layout(location = ${SpriteShader.a_Corner}) in vec2 a_Corner;
+layout(location = ${SpriteShader.a_Uv}) in vec2 a_Uv;
+
+out vec2 v_TexCoord;
+
+void main() {
+    vec4 viewPos = UnpackMatrix(u_View) * vec4(u_Position, 1.0);
+    viewPos.xy += a_Corner * u_Scale;
+
+    gl_Position = UnpackMatrix(u_Proj) * viewPos;
+    v_TexCoord = a_Uv.xy;
+}
+`;
+
+    public override frag = `
+${VertexLitShader.Common}
+
+in vec2 v_TexCoord;
+
+void main() {
+    gl_FragColor = texture(SAMPLER_2D(u_Texture), v_TexCoord.xy);
+    if(gl_FragColor.a < 0.01) {
+        discard;
+    }
+}
+`;
+    
+    public static Common = `
+${GfxShaderLibrary.MatrixLibrary}
+
+layout(std140) uniform ub_SceneParams {
+    Mat4x4 u_View;
+    Mat4x4 u_Proj;
+};
+
+layout(std140) uniform ub_Position {
+    vec3 u_Position;
+    float u_Scale;
+};
+
+layout(location = 0) uniform sampler2D u_Texture;
+`;
+}

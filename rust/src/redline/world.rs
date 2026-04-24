@@ -25,6 +25,19 @@ pub struct ExtendedHeader12 {
 }
 
 #[derive(DekuRead, Debug)]
+#[allow(unused)]
+pub struct ExtendedHeader58 {
+    unk1: u32,
+    #[deku(reader = "read_len_string(deku::reader)")]
+    unk2: String,
+    #[deku(reader = "read_len_string(deku::reader)")]
+    unk3: String,
+    unk4: u32,
+    unk5: u32,
+    unk6: u32,
+}
+
+#[derive(DekuRead, Debug)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
 pub struct ExtendedHeader {
@@ -43,6 +56,8 @@ pub struct ExtendedHeader {
     ext_v10: Option<ExtendedHeader10>,
     #[deku(cond = "version > 0xb")]
     ext_v12: Option<ExtendedHeader12>,
+    #[deku(cond = "version > 0x29")]
+    ext_v58: Option<ExtendedHeader58>,
 }
 
 #[derive(DekuRead, Debug)]
@@ -451,7 +466,7 @@ fn read_world_entity<R: std::io::Read + std::io::Seek>(
 pub struct World {
     #[deku(assert_eq = "*b\"WLD\"")]
     magic: [u8; 3],
-    #[deku(assert = "*version < 0x30")]
+    #[deku(assert = "*version < 0x2b")]
     version: u32,
 
     #[deku(cond = "*version > 0x24")]

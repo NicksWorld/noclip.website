@@ -55,8 +55,8 @@ type ArchiveEntry = {
     filename: string;
 };
 
-function extractBgd(bgd_name: string): void {
-    const buffer = fetchDataSync(bgd_name);
+function extractBgd(bgdPath: string, outPath: string): void {
+    const buffer = fetchDataSync(bgdPath);
     const reader = new ContentReader(buffer);
 
     // Version number, always 2
@@ -76,7 +76,7 @@ function extractBgd(bgd_name: string): void {
     // Extract all entries
     for (const entry of entries) {
         const data = reader.readBytes(entry.size);
-        const dstPath = `${pathBaseOut}/${entry.filename.toLowerCase()}`;
+        const dstPath = `${outPath}/${entry.filename.toLowerCase()}`;
 
         mkdirSync(path.dirname(dstPath), { recursive: true });
         writeFileSync(dstPath, Buffer.from(data.copyToBuffer()));
@@ -84,8 +84,12 @@ function extractBgd(bgd_name: string): void {
 }
 
 async function main() {
-    extractBgd(`${pathBaseIn}/Redline.bgd`);
-    extractBgd(`${pathBaseIn}/Redline_Patch1.bgd`);
+    extractBgd(`${pathBaseIn}/Redline.bgd`, `${pathBaseOut}`);
+    extractBgd(`${pathBaseIn}/Redline_Patch1.bgd`, `${pathBaseOut}`);
+    extractBgd(`${pathBaseIn}/Arena.bgd`, `${pathBaseOut}/ArenaDemo`);
+    extractBgd(`${pathBaseIn}/Redline_081.bgd`, `${pathBaseOut}/demo_081`);
+    extractBgd(`${pathBaseIn}/Redline_090.bgd`, `${pathBaseOut}/demo_090`);
+    extractBgd(`${pathBaseIn}/Arena.bgd`, `${pathBaseOut}/ArenaDemo`);
 }
 
 main();

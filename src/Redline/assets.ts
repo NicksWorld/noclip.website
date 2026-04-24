@@ -2,7 +2,6 @@ import { Texture } from "./material";
 import { Geo } from "./geo";
 import { SceneContext } from "../SceneBase";
 import { GfxDevice } from "../gfx/platform/GfxPlatform";
-import { pathBase } from "./scenes";
 import ArrayBufferSlice from "../ArrayBufferSlice";
 import { rust } from "../rustlib";
 import { Anim } from "./anim";
@@ -14,6 +13,8 @@ export class AssetManager {
 
     public world: rust.RedlineWorld;
     public scripts: rust.RedlineScript;
+
+    constructor(public pathBase: string) {};
 
     private formatFilename(name: string, ext: string, replace_ext: string = "") {
         name = name.toLowerCase();
@@ -30,7 +31,7 @@ export class AssetManager {
     }
 
     private async fetch(context: SceneContext, filename: string): Promise<ArrayBufferSlice | undefined> {
-        const raw = await context.dataFetcher.fetchData(`${pathBase}/${filename}`, {allow404: true});
+        const raw = await context.dataFetcher.fetchData(`${this.pathBase}/${filename}`, {allow404: true});
         if (raw.byteLength == 0) return;
         return raw;
     }
@@ -47,8 +48,10 @@ export class AssetManager {
 
     // Entrypoint to the majority of asset loading
     public async load(world: string, context: SceneContext) {
+        let main_script = "pc_script";
+        if (this.pathBase == "Redline/ArenaDemo") main_script = "arenascript";
         // Preload required scripts
-        this.scripts = (await this.load_script("pc_script", context))!;
+        this.scripts = (await this.load_script(main_script, context))!;
         this.world = (await this.load_world(world, context))!;
     }
 

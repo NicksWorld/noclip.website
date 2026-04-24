@@ -60,6 +60,7 @@ export class RedlineRenderer implements SceneGfx {
     private sampler: GfxSampler;
 
     private inputLayout: GfxInputLayout;
+    private billboardInputLayout: GfxInputLayout;
 
     constructor(
         private sceneContext: SceneContext,
@@ -117,7 +118,33 @@ export class RedlineRenderer implements SceneGfx {
             ],
 
             indexBufferFormat: GfxFormat.U16_R,
-        })
+        });
+
+        this.billboardInputLayout = cache.createInputLayout({
+            vertexAttributeDescriptors: [
+                {
+                    location: VertexLitShader.a_Position,
+                    format: GfxFormat.F32_RG,
+                    bufferByteOffset: 0,
+                    bufferIndex: 0,
+                },
+                {
+                    location: VertexLitShader.a_Uv,
+                    format: GfxFormat.F32_RG,
+                    bufferByteOffset: 8,
+                    bufferIndex: 0,
+                },
+            ],
+
+            vertexBufferDescriptors: [
+                {
+                    byteStride: 16,
+                    frequency: GfxVertexBufferFrequency.PerVertex,
+                },
+            ],
+
+            indexBufferFormat: GfxFormat.U16_R,
+        });
 
         for (const tex of this.assets.textures.values()) {
             this.textureHolder.viewerTextures.push(tex);
@@ -313,11 +340,11 @@ export class RedlineRenderer implements SceneGfx {
 }
 
 class RedlineSceneDesc implements SceneDesc {
-    constructor(public id: string, public name: string) {
+    constructor(public pathBase: string, public id: string, public name: string) {
     }
 
     public async createScene(device: GfxDevice, context: SceneContext): Promise<SceneGfx> {
-        const assets = new AssetManager();
+        const assets = new AssetManager(this.pathBase);
         await assets.load(this.id, context);
 
         // Load base assets
@@ -360,11 +387,24 @@ class RedlineSceneDesc implements SceneDesc {
 
                     if (scriptObj.unk8.name != "") {
                         const s = assets.scripts.lookup_emitter_array(scriptObj.unk8.name.toLowerCase());
-                        if (s && s.scripts.scripts[0]) {
-                            const x = assets.scripts.lookup_emitter(s.scripts.scripts[0]!.toLowerCase());
-                            console.log(x);
-                            if (x && x.unk1.scripts[0]) {
-                                const y = assets.scripts.lookup_subemitter(x.unk1.scripts[0].toLowerCase());
+                        if (s) {
+                            for (const xx of s.scripts.scripts) {
+                                const x = assets.scripts.lookup_emitter(xx.toLowerCase());
+                                console.log("emitter");
+                                console.log(x);
+                                if (x && x.unk1.scripts[0]) {
+                                    for (const yy of x.unk1.scripts) {
+                                        const y = assets.scripts.lookup_subemitter(yy.toLowerCase());
+                                        console.log("sub_emitter");
+                                        console.log(y);
+                                        if (y) {
+                                            for (const spr of y.unk1.scripts) {
+                                                console.log("sprite");
+                                                console.log(assets.scripts.lookup_sprite(spr.toLowerCase()));
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -377,6 +417,8 @@ class RedlineSceneDesc implements SceneDesc {
 
             asset.free();
         }
+
+        console.log(assets.scripts.lookup_descriptor(0xB));
 
         const sky_name = assets.world.skybox();
         let sky = undefined
@@ -408,53 +450,72 @@ export const sceneGroup: SceneGroup = {
 
     sceneDescs: [
         "Tutorial",
-        new RedlineSceneDesc("footTraining.wld", "Foot Training"),
-        new RedlineSceneDesc("carTraining.wld", "Vehicle Training"),
+        new RedlineSceneDesc("Redline", "footTraining.wld", "Foot Training"),
+        new RedlineSceneDesc("Redline", "carTraining.wld", "Vehicle Training"),
         "Campaign",
-        new RedlineSceneDesc("Stadium_City.wld", "Stadium City"),
-        new RedlineSceneDesc("Yahoos.wld", "Yahoos"),
-        new RedlineSceneDesc("toxicorp.wld", "ToxiCorp"),
-        new RedlineSceneDesc("RED6.wld", "Red 6"),
-        new RedlineSceneDesc("AIRPORT.wld", "Airport"),
-        new RedlineSceneDesc("terminal.wld", "Airport Terminal"),
-        new RedlineSceneDesc("Freakway.wld", "Freakway"),
-        new RedlineSceneDesc("HubChallenge.wld", "Challenge"),
-        new RedlineSceneDesc("Sanctum.wld", "Sanctum"),
-        new RedlineSceneDesc("SanctumTower.wld", "Sanctum Tower"),
-        new RedlineSceneDesc("Boom.wld", "Boom"),
-        new RedlineSceneDesc("Area51.wld", "Area 51"),
-        new RedlineSceneDesc("Barrage.wld", "Barrage"),
-        new RedlineSceneDesc("Showdown.wld", "Showdown"),
-        new RedlineSceneDesc("ShowdownRant.wld", "Showdown Rant"),
+        new RedlineSceneDesc("Redline", "Stadium_City.wld", "Stadium City"),
+        new RedlineSceneDesc("Redline", "Yahoos.wld", "Yahoos"),
+        new RedlineSceneDesc("Redline", "toxicorp.wld", "ToxiCorp"),
+        new RedlineSceneDesc("Redline", "RED6.wld", "Red 6"),
+        new RedlineSceneDesc("Redline", "AIRPORT.wld", "Airport"),
+        new RedlineSceneDesc("Redline", "terminal.wld", "Airport Terminal"),
+        new RedlineSceneDesc("Redline", "Freakway.wld", "Freakway"),
+        new RedlineSceneDesc("Redline", "HubChallenge.wld", "Challenge"),
+        new RedlineSceneDesc("Redline", "Sanctum.wld", "Sanctum"),
+        new RedlineSceneDesc("Redline", "SanctumTower.wld", "Sanctum Tower"),
+        new RedlineSceneDesc("Redline", "Boom.wld", "Boom"),
+        new RedlineSceneDesc("Redline", "Area51.wld", "Area 51"),
+        new RedlineSceneDesc("Redline", "Barrage.wld", "Barrage"),
+        new RedlineSceneDesc("Redline", "Showdown.wld", "Showdown"),
+        new RedlineSceneDesc("Redline", "ShowdownRant.wld", "Showdown Rant"),
         "Hub",
         // These are used for the pre-mission cinematics.
         // TODO: Determine if these are better inter-mixed with campaign missions
-        new RedlineSceneDesc("hub0.wld", "Hub0"),
-        new RedlineSceneDesc("hub1.wld", "Hub1"),
-        new RedlineSceneDesc("hub2.wld", "Hub2"),
-        new RedlineSceneDesc("hub3.wld", "Hub3"),
-        new RedlineSceneDesc("hub4.wld", "Hub4"),
-        new RedlineSceneDesc("hubchallenge.wld", "HubChallenge"),
-        new RedlineSceneDesc("areahub0.wld", "AreaHub0"),
-        new RedlineSceneDesc("areahub2.wld", "AreaHub2"),
-        new RedlineSceneDesc("areahub3.wld", "AreaHub3"),
-        new RedlineSceneDesc("areahub_final.wld", "AreaHub Final"),
+        new RedlineSceneDesc("Redline", "hub0.wld", "Hub0"),
+        new RedlineSceneDesc("Redline", "hub1.wld", "Hub1"),
+        new RedlineSceneDesc("Redline", "hub2.wld", "Hub2"),
+        new RedlineSceneDesc("Redline", "hub3.wld", "Hub3"),
+        new RedlineSceneDesc("Redline", "hub4.wld", "Hub4"),
+        new RedlineSceneDesc("Redline", "hubchallenge.wld", "HubChallenge"),
+        new RedlineSceneDesc("Redline", "areahub0.wld", "AreaHub0"),
+        new RedlineSceneDesc("Redline", "areahub2.wld", "AreaHub2"),
+        new RedlineSceneDesc("Redline", "areahub3.wld", "AreaHub3"),
+        new RedlineSceneDesc("Redline", "areahub_final.wld", "AreaHub Final"),
         "Secret",
-        new RedlineSceneDesc("BeyondGames.wld", "BeyondGames"),
+        new RedlineSceneDesc("Redline", "BeyondGames.wld", "BeyondGames"),
         "Unused",
-        new RedlineSceneDesc("stadiumfirstlev.wld", "Stadium City (alt)"),
+        new RedlineSceneDesc("Redline", "stadiumfirstlev.wld", "Stadium City (alt)"),
         "Multiplayer",
-        new RedlineSceneDesc("acidland.wld", "Acidland"),
-        new RedlineSceneDesc("asphixia ctf.wld", "Asphixia CTF"),
-        new RedlineSceneDesc("bloodbucket.wld", "Blood Bucket"),
-        new RedlineSceneDesc("crimson nile ctf.wld", "Crimson Nile CTF"),
-        new RedlineSceneDesc("deathdome.wld", "Deathdome"),
-        new RedlineSceneDesc("denizone.wld", "Denizone"),
-        new RedlineSceneDesc("killcage.wld", "Killcage"),
-        new RedlineSceneDesc("octotron.wld", "Octotron"),
-        new RedlineSceneDesc("outpost.wld", "Outpost"),
-        new RedlineSceneDesc("ranthive.wld", "Rant Hive"),
-        new RedlineSceneDesc("slaughterhouse ctf.wld", "Slaughterhouse CTF"),
-        new RedlineSceneDesc("triagonizer.wld", "Triagonizer"),
+        new RedlineSceneDesc("Redline", "acidland.wld", "Acidland"),
+        new RedlineSceneDesc("Redline", "asphixia ctf.wld", "Asphixia CTF"),
+        new RedlineSceneDesc("Redline", "bloodbucket.wld", "Blood Bucket"),
+        new RedlineSceneDesc("Redline", "crimson nile ctf.wld", "Crimson Nile CTF"),
+        new RedlineSceneDesc("Redline", "deathdome.wld", "Deathdome"),
+        new RedlineSceneDesc("Redline", "denizone.wld", "Denizone"),
+        new RedlineSceneDesc("Redline", "killcage.wld", "Killcage"),
+        new RedlineSceneDesc("Redline", "octotron.wld", "Octotron"),
+        new RedlineSceneDesc("Redline", "outpost.wld", "Outpost"),
+        new RedlineSceneDesc("Redline", "ranthive.wld", "Rant Hive"),
+        new RedlineSceneDesc("Redline", "slaughterhouse ctf.wld", "Slaughterhouse CTF"),
+        new RedlineSceneDesc("Redline", "triagonizer.wld", "Triagonizer"),
+        // Extras! Pre-release demos & cancelled sequel/spinoff
+        "0.81 Multiplayer Demo",
+        new RedlineSceneDesc("Redline/demo_081", "killcage.wld", "Killcage"),
+        new RedlineSceneDesc("Redline/demo_081", "triagonizer-4t.wld", "Triagonizer"),
+        "0.90 Demo",
+        new RedlineSceneDesc("Redline/demo_090", "foottraining.wld", "Foot Training"),
+        new RedlineSceneDesc("Redline/demo_090", "cartraining.wld", "Vehicle Training"),
+        new RedlineSceneDesc("Redline/demo_090", "hub0.wld", "Hub 0"),
+        new RedlineSceneDesc("Redline/demo_090", "stadium_city.wld", "Stadium City"),
+        new RedlineSceneDesc("Redline/demo_090", "stadiumfirstlev.wld", "Stadium City (ALT)"),
+        new RedlineSceneDesc("Redline/demo_090", "yahoos.wld", "Yahoos"),
+        new RedlineSceneDesc("Redline/demo_090", "multi-airport.wld", "Airport"),
+        new RedlineSceneDesc("Redline/demo_090", "triagonizer-4t.wld", "Triagonizer"),
+        "Arena Demo (Cancelled Sequel/Spinoff)",
+        new RedlineSceneDesc("Redline/ArenaDemo", "multiplayernet.wld", "Multiplayer Net"),
+        new RedlineSceneDesc("Redline/ArenaDemo", "dckillcage.wld", "DC Killcage"),
+        new RedlineSceneDesc("Redline/ArenaDemo", "dcterminal.wld", "DC Terminal"),
+        new RedlineSceneDesc("Redline/ArenaDemo", "deathmatch.wld", "Deathmatch"),
+        new RedlineSceneDesc("Redline/ArenaDemo", "lastmanstanding.wld", "Last Man Standing"),
     ],
 };
