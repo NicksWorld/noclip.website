@@ -5,6 +5,8 @@ import { GfxDevice } from "../gfx/platform/GfxPlatform";
 import ArrayBufferSlice from "../ArrayBufferSlice";
 import { rust } from "../rustlib";
 import { Anim } from "./anim";
+import { RedlineObject } from "./scenes";
+import { vec3 } from "gl-matrix";
 
 export class AssetManager {
     public textures: Map<string, Texture> = new Map();
@@ -60,9 +62,7 @@ export class AssetManager {
         if (raw == undefined) return;
         const world = rust.RedlineWorld.load(raw!.createTypedArray(Uint8Array));
 
-        for (const tex of world.list_textures()) {
-            await this.load_texture(tex, context);
-        }
+        await Promise.all(world.list_textures().map((tex) => this.load_texture(tex, context)));
 
         return world;
     }
@@ -74,16 +74,34 @@ export class AssetManager {
         return scripts;
     }
 
+    public async load_obj(name: string, context: SceneContext): Promise<RedlineObject | undefined> {
+        const obj = this.scripts.lookup_object(name.toLowerCase());
+        if (!obj) return undefined;
+
+        const out: RedlineObject = {static: undefined, anim: undefined, anim_scale: [1,1,1], anim_dir: 1, transparent: obj.transparent != 0};
+
+        out.static = await this.load_geo(obj.geo, context);
+        if (obj.unk6.name != "") {
+            const anim_desc = this.scripts.lookup_animdesc(obj.unk6.name);
+            if (anim_desc) {
+                out.anim = await this.load_anm(anim_desc.anim, context);
+                out.anim_dir = anim_desc.dir;
+                if (anim_desc.scale_x != 0)
+                    out.anim_scale = vec3.fromValues(anim_desc.scale_x, anim_desc.scale_y, anim_desc.scale_z);
+            }
+        }
+
+        return out;
+    }
+
     public async load_anm(name: string, context: SceneContext): Promise<Anim | undefined> {
         let raw = (await this.fetch(context, this.formatFilename(name, "anm")))!;
 
         const anim = new Anim(name, context.device, raw);
 
         if (anim.sequential) {
-            for (const frame of anim.sequential.frames) {
-                // Preload constituent frames
-                this.load_geo(frame, context);
-            }
+            const frames = anim.sequential.frames.map((frame) => this.load_geo(frame, context));
+            await Promise.all(frames);
         }
 
         this.animations.set(name, anim);

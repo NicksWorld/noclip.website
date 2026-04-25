@@ -27,7 +27,7 @@ class RedlineRenderInstList {
     public transparent: GfxRenderInstList = new GfxRenderInstList();
 }
 
-type RedlineObject = {
+export type RedlineObject = {
     static: Geo | undefined,
     anim: Anim | undefined,
     anim_scale: vec3,
@@ -349,76 +349,30 @@ class RedlineSceneDesc implements SceneDesc {
 
         // Load base assets
         const asset_list = assets.world.list_assets();
-        const asset_table: RedlineAsset[] = [];
+        const asset_table: Promise<RedlineAsset>[] = [];
         for (const asset of asset_list) {
             console.log(asset_table.length + " " + asset.name);
             let name = asset.name.toLowerCase();
             switch (asset.kind) {
                 case 0:
-                    const model = await assets.load_geo(name, context);
+                    const model = assets.load_geo(name, context);
                     asset_table.push(model);
                     break;
                 case 1:
-                    const anim = await assets.load_anm(name, context);
+                    const anim = assets.load_anm(name, context);
                     asset_table.push(anim);
                     break;
                 case 2:
-                    const scriptObj = assets.scripts.lookup_object(name);
-                    console.log(scriptObj);
-                    if (!scriptObj) {
-                        asset_table.push(undefined);
-                        break;
-                    }
-                    let obj: RedlineObject = {static: undefined, anim: undefined, anim_scale: [1, 1, 1], anim_dir: 1, transparent: scriptObj.transparent != 0};
-                    if (scriptObj.anim.name == "") {
-                        obj.static = await assets.load_geo(scriptObj.geo, context);
-                    }
+                    const obj = assets.load_obj(name, context);
                     asset_table.push(obj);
-                    const anim_name = scriptObj.unk6.name;
-                    if (anim_name != "") {
-                        const anim_desc = assets.scripts.lookup_animdesc(anim_name.toLowerCase());
-                        if (anim_desc != undefined) {
-                            obj.anim = await assets.load_anm(anim_desc.anim, context);
-                            obj.anim_dir = anim_desc.dir;
-                            if (anim_desc.scale_x != 0) // 0, 0, 0 seems to be used as a default
-                                obj.anim_scale = vec3.fromValues(anim_desc.scale_x, anim_desc.scale_y, anim_desc.scale_z);
-                        }
-                    }
-
-                    if (scriptObj.unk8.name != "") {
-                        const s = assets.scripts.lookup_emitter_array(scriptObj.unk8.name.toLowerCase());
-                        if (s) {
-                            for (const xx of s.scripts.scripts) {
-                                const x = assets.scripts.lookup_emitter(xx.toLowerCase());
-                                console.log("emitter");
-                                console.log(x);
-                                if (x && x.unk1.scripts[0]) {
-                                    for (const yy of x.unk1.scripts) {
-                                        const y = assets.scripts.lookup_subemitter(yy.toLowerCase());
-                                        console.log("sub_emitter");
-                                        console.log(y);
-                                        if (y) {
-                                            for (const spr of y.unk1.scripts) {
-                                                console.log("sprite");
-                                                console.log(assets.scripts.lookup_sprite(spr.toLowerCase()));
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                     break;
                 default:
-                    asset_table.push(undefined);
+                    asset_table.push((async () => undefined)());
                     console.log("Unhandled asset type: " + asset.kind);
                     break;
             }
-
             asset.free();
         }
-
-        console.log(assets.scripts.lookup_descriptor(0xB));
 
         const sky_name = assets.world.skybox();
         let sky = undefined
@@ -439,8 +393,9 @@ class RedlineSceneDesc implements SceneDesc {
             to_render.push(new WorldGeometry(anm));
             anm.free();
         }
+        const table = await Promise.all(asset_table);
 
-        return new RedlineRenderer(context, assets, asset_table, sky, to_render);
+        return new RedlineRenderer(context, assets, table, sky, to_render);
     }
 }
 
