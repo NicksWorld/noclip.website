@@ -4,6 +4,7 @@ import { rust } from "../rustlib";
 
 export class Anim {
     public sequential: rust.Redline.SeqAnim | undefined;
+    public iff: boolean = false;
 
     constructor(name: string, device: GfxDevice, raw: ArrayBufferSlice) {
         const anim = rust.redline_load_seq_anim(raw.createTypedArray(Uint8Array));
@@ -11,5 +12,7 @@ export class Anim {
             this.sequential = anim;
             return;
         }
+
+        this.iff = true;
     }
 }

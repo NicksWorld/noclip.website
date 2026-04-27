@@ -1,6 +1,6 @@
-use deku::{ctx::Order, DekuContainerRead, DekuError, DekuRead};
+use deku::{ctx::Order, reader::Reader, DekuContainerRead, DekuError, DekuRead, DekuReader};
 use serde::Serialize;
-use std::{collections::HashMap, convert::TryInto};
+use std::{collections::HashMap, convert::TryInto, io::Cursor};
 use wasm_bindgen::prelude::*;
 
 use crate::redline::read_padded_string;
@@ -27,6 +27,7 @@ struct ScriptSection {
 #[wasm_bindgen(js_name = "RedlineScript")]
 struct PCScript {
     sections: [Option<ScriptSection>; 0x28],
+    version: ScriptVersion,
 }
 
 struct RawCursor<'a> {
@@ -70,6 +71,16 @@ struct Descriptor {
     offset: u16,
     named: u16, // 1 or 0
     name: String,
+}
+
+#[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
+#[wasm_bindgen(js_name = "RedlineScriptVersion")]
+#[repr(u8)]
+pub enum ScriptVersion {
+    Demo0_81,
+    Demo0_90,
+    Release1_0,
+    Arena,
 }
 
 #[non_exhaustive]
@@ -387,12 +398,53 @@ struct Sprite {
     xz_speed_init_add2: u32,
 }
 
+#[derive(Debug, DekuRead, Serialize, ts_rs::TS)]
+#[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "ScriptItem")]
+#[deku(ctx = "version: ScriptVersion")]
+struct Item {
+    #[deku(reader = "read_padded_string(deku::reader, 18)")]
+    name: String,
+    #[deku(reader = "read_padded_string(deku::reader, 36)")]
+    geo: String,
+    // 1 = yes
+    transparent: i16,
+    hitpoints: i16,
+    respawn_delay: i16,
+    rotation_speed: f32,
+
+    #[deku(reader = "ScriptRef::read(deku::reader)")]
+    pickup_emit: ScriptRef,
+    #[deku(reader = "ScriptRef::read(deku::reader)")]
+    respawn_emit: ScriptRef,
+
+    unk3: u32, //datatype unsure
+    #[deku(count = "64")]
+    unk4: Vec<u8>, // Looks like an ascii text descriptor, then pickup data?
+    pickup_flags: i16,
+    delay_min_rng: [u8; 6],
+    emitter_x: f32,
+    emitter_y: f32,
+    emitter_z: f32,
+
+    #[deku(reader = "ScriptRef::read(deku::reader)")]
+    unk5: ScriptRef,
+    droppable_flag: i16,
+    #[deku(
+        cond = "version < ScriptVersion::Release1_0",
+        reader = "ScriptRef::read(deku::reader).map(|x| Some(x))",
+        pad_bytes_before = "2"
+    )]
+    unk6: Option<ScriptRef>,
+}
+
 #[allow(unused)]
 #[wasm_bindgen(js_class = "RedlineScript")]
 impl PCScript {
-    pub fn load(raw: &[u8]) -> PCScript {
+    pub fn load(raw: &[u8], version: ScriptVersion) -> PCScript {
         let mut script = PCScript {
             sections: [const { None }; 0x28],
+            version: version,
         };
 
         let mut cursor = RawCursor { inner: raw, pos: 0 };
@@ -502,6 +554,21 @@ impl PCScript {
                 let script = Object::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
                     .1;
+                return serde_wasm_bindgen::to_value(&script).unwrap();
+            }
+        }
+        JsValue::undefined()
+    }
+
+    #[wasm_bindgen(unchecked_return_type = "Redline.ScriptItem | undefined")]
+    pub fn lookup_item(&self, name: &str) -> JsValue {
+        if let Some(section) = &self.sections[ScriptType::Item as usize] {
+            if let Some(idx) = section.lookup_map.get(name) {
+                let script = Item::from_reader_with_ctx(
+                    &mut Reader::new(&mut Cursor::new(&section.entries[*idx].data)),
+                    self.version,
+                )
+                .unwrap();
                 return serde_wasm_bindgen::to_value(&script).unwrap();
             }
         }

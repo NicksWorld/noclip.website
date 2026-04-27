@@ -8,6 +8,14 @@ import { Anim } from "./anim";
 import { RedlineObject } from "./scenes";
 import { vec3 } from "gl-matrix";
 
+enum WorldAssetKind {
+    Model = 0,
+    Animation = 1,
+    ScriptObject = 2,
+}
+
+export type WorldAsset = Geo | Anim | RedlineObject | undefined;
+
 export class AssetManager {
     public textures: Map<string, Texture> = new Map();
     public animations: Map<string, Anim> = new Map();
@@ -15,6 +23,8 @@ export class AssetManager {
 
     public world: rust.RedlineWorld;
     public scripts: rust.RedlineScript;
+
+    public asset_table: WorldAsset[];
 
     constructor(public pathBase: string) {};
 
@@ -52,9 +62,31 @@ export class AssetManager {
     public async load(world: string, context: SceneContext) {
         let main_script = "pc_script";
         if (this.pathBase == "Redline/ArenaDemo") main_script = "arenascript";
+
+        let script_version = rust.RedlineScriptVersion.Release1_0;
+        switch (this.pathBase) {
+            case "Redline/demo_081":
+                script_version = rust.RedlineScriptVersion.Demo0_81
+            case "Redline/demo_090":
+                script_version = rust.RedlineScriptVersion.Demo0_90
+            case "Redline/ArenaDemo":
+                script_version = rust.RedlineScriptVersion.Arena
+        }
         // Preload required scripts
-        this.scripts = (await this.load_script(main_script, context))!;
+        this.scripts = (await this.load_script(main_script, script_version, context))!;
         this.world = (await this.load_world(world, context))!;
+
+        const textures = Promise.all(this.world.list_textures().map((tex) => this.load_texture(tex, context)));
+
+        const assets = this.world.list_assets();
+        const asset_table = Promise.all(assets.map(async (ass) => {
+            const v = await this.load_asset(ass, context);
+            ass.free(); // TODO: Remove this once using serde-wasm-bindgen
+            return v;
+        }));
+
+        await textures;
+        this.asset_table = await asset_table;
     }
 
     public async load_world(name: string, context: SceneContext): Promise<rust.RedlineWorld | undefined> {
@@ -62,16 +94,27 @@ export class AssetManager {
         if (raw == undefined) return;
         const world = rust.RedlineWorld.load(raw!.createTypedArray(Uint8Array));
 
-        await Promise.all(world.list_textures().map((tex) => this.load_texture(tex, context)));
-
         return world;
     }
 
-    public async load_script(name: string, context: SceneContext): Promise<rust.RedlineScript | undefined> {
+    public async load_script(name: string, version: rust.RedlineScriptVersion, context: SceneContext): Promise<rust.RedlineScript | undefined> {
         let raw = (await this.fetch(context, this.formatFilename(name, "thg")))!;
-        const scripts = rust.RedlineScript.load(raw.createTypedArray(Uint8Array));
+        const scripts = rust.RedlineScript.load(raw.createTypedArray(Uint8Array), version);
 
         return scripts;
+    }
+
+    private async load_asset(asset: rust.RedlineAssetDef, context: SceneContext): Promise<WorldAsset> {
+        switch(asset.kind) {
+            case WorldAssetKind.Model:
+                return await this.load_geo(asset.name, context);
+            case WorldAssetKind.Animation:
+                return await this.load_anm(asset.name, context);
+            case WorldAssetKind.ScriptObject:
+                return await this.load_obj(asset.name, context);
+            default:
+                throw new Error("Encountered unknown world asset kind: " + asset.kind);
+        }
     }
 
     public async load_obj(name: string, context: SceneContext): Promise<RedlineObject | undefined> {
@@ -82,7 +125,7 @@ export class AssetManager {
 
         out.static = await this.load_geo(obj.geo, context);
         if (obj.unk6.name != "") {
-            const anim_desc = this.scripts.lookup_animdesc(obj.unk6.name);
+            const anim_desc = this.scripts.lookup_animdesc(obj.unk6.name.toLowerCase());
             if (anim_desc) {
                 out.anim = await this.load_anm(anim_desc.anim, context);
                 out.anim_dir = anim_desc.dir;
@@ -90,6 +133,8 @@ export class AssetManager {
                     out.anim_scale = vec3.fromValues(anim_desc.scale_x, anim_desc.scale_y, anim_desc.scale_z);
             }
         }
+
+        // TODO: Sometimes both static an anim are null?
 
         return out;
     }

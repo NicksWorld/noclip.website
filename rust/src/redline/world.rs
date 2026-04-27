@@ -1,11 +1,13 @@
 use deku::ctx::Order;
 use deku::{DekuContainerRead, DekuRead};
 use deku::{DekuError, DekuReader};
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 use crate::redline::read_len_string;
 use crate::redline::read_len_string_opt;
 use crate::redline::read_len_string_vec;
+use crate::redline::read_padded_string;
 
 #[derive(DekuRead, Debug)]
 #[allow(unused)]
@@ -49,8 +51,8 @@ pub struct ExtendedHeader {
     unk3: u16,
     unk4: u16,
 
-    unk5: u32,
-    unk6: u32,
+    unk5: f32,
+    unk6: f32,
 
     #[deku(cond = "version > 9")]
     ext_v10: Option<ExtendedHeader10>,
@@ -78,8 +80,8 @@ pub struct Texture {
     unk2: u8,
     unk3: u8,
 
-    unk4: u32,
-    unk5: u32,
+    unk4: f32,
+    unk5: f32,
     unk6: u32,
     unk7: u32,
     unk8: u32,
@@ -124,10 +126,11 @@ struct Unknown7 {
     val: u32, // Why more data in old versions?
 }
 
-#[derive(DekuRead, Debug, Clone)]
+#[derive(DekuRead, Serialize, Debug, Clone, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
 #[wasm_bindgen(js_name = "RedlineWorldModel")]
+#[ts(export, export_to = "redline.ts", rename = "EntityModel")]
 pub struct Model {
     pub asset_idx: u16,
     pos: [f32; 3],
@@ -172,9 +175,10 @@ impl Anim {
     }
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "Entity4")]
 pub struct Entity4 {
     unk1: [f32; 3],
     unk2: u16,
@@ -188,9 +192,10 @@ pub struct Entity4 {
     unk6: u16,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "Entity5")]
 pub struct Entity5Ext {
     unk1: [u16; 6], // Not really an array
     #[deku(cond = "version > 0x16")]
@@ -199,9 +204,10 @@ pub struct Entity5Ext {
     unk3: [f32; 3],
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "Entity5")]
 pub struct Entity5 {
     unk1: [f32; 3],
     unk2: u16,
@@ -211,9 +217,10 @@ pub struct Entity5 {
     unk4: Option<Entity5Ext>,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "Entity6")]
 pub struct Entity6 {
     unk1: [f32; 3],
     unk2: [u16; 5], // Not really array
@@ -230,9 +237,10 @@ pub struct Entity6 {
     unk11: f32,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "Entity7")]
 pub struct Entity7 {
     unk1: [f32; 3],
     unk2: u16,
@@ -251,10 +259,11 @@ pub struct Entity7 {
     unk9: u16,
 }
 
-#[derive(DekuRead, Debug, Clone)]
+#[derive(DekuRead, Debug, Clone, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
 #[wasm_bindgen(js_name = "RedlineWorldAnim")]
+#[ts(export, export_to = "redline.ts", rename = "EntityAnim")]
 pub struct Anim {
     pub asset_idx: u16,
     pos: [f32; 3],
@@ -267,9 +276,10 @@ pub struct Anim {
     unk7: u8,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "Entity2Ext")]
 pub struct Entity2Ext {
     unk1: u32,
     unk2: u32,
@@ -283,55 +293,58 @@ pub struct Entity2Ext {
     unk7: u8,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-pub struct Entity2 {
-    unk1: [f32; 3],
+#[ts(export, export_to = "redline.ts", rename = "EntityPerson")]
+pub struct Person {
+    pos: [f32; 3],
     unk2: u16,
     unk3: u16,
     unk4: u8,
     #[deku(cond = "version > 0x15")]
     unk5: u16,
     #[deku(reader = "read_len_string(deku::reader)")]
-    unk6: String,
+    person_script: String,
     #[deku(reader = "read_len_string(deku::reader)")]
-    unk7: String,
+    ai_foot: String,
 
     #[deku(cond = "version > 8", reader = "read_len_string_opt(deku::reader)")]
-    unk8: Option<String>,
+    ai_car: Option<String>,
     #[deku(cond = "version > 0x1b", reader = "read_len_string_opt(deku::reader)")]
-    unk9: Option<String>,
+    unk9: Option<String>, // 0xe0
     #[deku(cond = "version > 0x23", reader = "read_len_string_opt(deku::reader)")]
-    unk10: Option<String>,
+    custom_item: Option<String>,
 
     #[deku(cond = "version > 0x22", ctx = "version")]
     unk11: Option<Entity2Ext>,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-pub struct Entity3 {
-    unk1: [f32; 3],
+#[ts(export, export_to = "redline.ts", rename = "EntityCar")]
+pub struct Car {
+    pos: [f32; 3],
     unk2: u16,
     unk3: u16,
     unk4: u8,
     #[deku(reader = "read_len_string(deku::reader)")]
-    unk5: String,
+    name: String,
     #[deku(cond = "version > 0x1c")]
     unk6: u32,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-pub struct Entity8 {
+#[ts(export, export_to = "redline.ts", rename = "EntitySoundEffect")]
+pub struct SoundEffect {
     unk1: [f32; 3],
     unk2: u16,
     unk3: u16,
     #[deku(reader = "read_len_string(deku::reader)")]
-    unk4: String,
+    name: String,
 
     #[deku(cond = "version > 0xa")]
     unk5: u16,
@@ -346,22 +359,24 @@ pub struct Entity8 {
     unk9: u16,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-pub struct Entity9 {
-    unk1: [f32; 3],
+#[ts(export, export_to = "redline.ts", rename = "EntityItem")]
+pub struct Item {
+    pos: [f32; 3],
     unk2: u16,
     unk3: u16,
     #[deku(reader = "read_len_string(deku::reader)")]
-    unk4: String,
+    name: String,
     #[deku(cond = "version > 0x24")]
     unk5: u16,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "Entity12")]
 pub struct Entity12 {
     unk1: [f32; 3],
     unk2: u16,
@@ -378,9 +393,10 @@ pub struct Entity12 {
     unk8: Option<String>,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "Entity13")]
 pub struct Entity13 {
     unk1: [f32; 3],
     unk2: u16,
@@ -394,9 +410,10 @@ pub struct Entity13 {
     unk10: u16,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "Entity15")]
 pub struct Entity15 {
     unk1: [f32; 3],
     unk2: u16,
@@ -407,19 +424,20 @@ pub struct Entity15 {
     unk6: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, ts_rs::TS)]
+#[ts(export, export_to = "redline.ts", rename = "Entity")]
 #[allow(unused)]
 pub enum WorldEntity {
     Model(Model),
     Anim(Anim),
-    Unknown2(Entity2), // Enemy spawnpoints?
-    Unknown3(Entity3),
+    Person(Person), // Enemy spawnpoints?
+    Car(Car),
     Unknown4(Entity4),
     Unknown5(Entity5),
     Unknown6(Entity6),
     Unknown7(Entity7),
-    Unknown8(Entity8),
-    Unknown9(Entity9),
+    SoundEffect(SoundEffect),
+    Item(Item), // Pickups
     Unknown12(Entity12),
     Unknown13(Entity13),
     Unknown15(Entity15),
@@ -438,14 +456,14 @@ fn read_world_entity<R: std::io::Read + std::io::Seek>(
         out.push(match tag[0] {
             0x00 => WorldEntity::Model(Model::from_reader_with_ctx(reader, version)?),
             0x01 => WorldEntity::Anim(Anim::from_reader_with_ctx(reader, version)?),
-            0x02 => WorldEntity::Unknown2(Entity2::from_reader_with_ctx(reader, version)?),
-            0x03 => WorldEntity::Unknown3(Entity3::from_reader_with_ctx(reader, version)?),
+            0x02 => WorldEntity::Person(Person::from_reader_with_ctx(reader, version)?),
+            0x03 => WorldEntity::Car(Car::from_reader_with_ctx(reader, version)?),
             0x04 => WorldEntity::Unknown4(Entity4::from_reader_with_ctx(reader, version)?),
             0x05 => WorldEntity::Unknown5(Entity5::from_reader_with_ctx(reader, version)?),
             0x06 => WorldEntity::Unknown6(Entity6::from_reader_with_ctx(reader, version)?),
             0x07 => WorldEntity::Unknown7(Entity7::from_reader_with_ctx(reader, version)?),
-            0x08 => WorldEntity::Unknown8(Entity8::from_reader_with_ctx(reader, version)?),
-            0x09 => WorldEntity::Unknown9(Entity9::from_reader_with_ctx(reader, version)?),
+            0x08 => WorldEntity::SoundEffect(SoundEffect::from_reader_with_ctx(reader, version)?),
+            0x09 => WorldEntity::Item(Item::from_reader_with_ctx(reader, version)?),
             0x0C => WorldEntity::Unknown12(Entity12::from_reader_with_ctx(reader, version)?),
             0x0D => WorldEntity::Unknown13(Entity13::from_reader_with_ctx(reader, version)?),
             0x0F => WorldEntity::Unknown15(Entity15::from_reader_with_ctx(reader, version)?),
@@ -476,8 +494,11 @@ pub struct World {
     unk4: u32,
 
     /// Filename of .evt script
-    #[deku(cond = "*version > 0x11")]
-    evt_script: Option<[u8; 0x40]>,
+    #[deku(
+        cond = "*version > 0x11",
+        reader = "read_padded_string(deku::reader, 0x40).map(|x| Some(x))"
+    )]
+    evt_script: Option<String>,
     #[deku(cond = "*version > 0x28")]
     unk5: u16,
     #[deku(cond = "*version > 0x07", ctx = "*version")]
@@ -494,6 +515,7 @@ pub struct World {
     #[deku(count = "*unk_v39_count")]
     unknown_v39: Vec<UnknownV39>,
 
+    // More models, but only a couple?
     #[deku(cond = "*version > 0x10")]
     unk_v16_count: u16,
     #[deku(reader = "read_len_string_vec(deku::reader, *unk_v16_count)")]
@@ -511,6 +533,12 @@ pub struct World {
     // Large list of unions. Likely all world entities
     #[deku(reader = "read_world_entity(deku::reader, *version)")]
     entities: Vec<WorldEntity>,
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
 }
 
 #[wasm_bindgen(js_class = "RedlineWorld")]
@@ -532,32 +560,14 @@ impl World {
         self.assets.clone()
     }
 
-    pub fn list_models(&self) -> Vec<Model> {
-        let mut out = vec![];
-        for entity in &self.entities {
-            if let WorldEntity::Model(m) = entity {
-                out.push(m.clone());
-            }
-        }
-
-        out
-    }
-
-    pub fn list_anims(&self) -> Vec<Anim> {
-        let mut out = vec![];
-        for entity in &self.entities {
-            if let WorldEntity::Anim(m) = entity {
-                out.push(m.clone());
-            }
-        }
-
-        out
-    }
-
     pub fn skybox(&self) -> String {
         self.extended_header
             .as_ref()
             .map(|x| x.skybox.clone())
             .unwrap_or_default()
+    }
+
+    pub fn entities(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.entities).unwrap()
     }
 }

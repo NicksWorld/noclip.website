@@ -1,5 +1,4 @@
 
-import { rust } from "../rustlib.js";
 import { GfxAttachmentState, GfxBlendFactor, GfxBlendMode, GfxChannelWriteMask, GfxCullMode, GfxDevice, GfxFormat, GfxInputLayout, GfxMipFilterMode, GfxProgram, GfxSampler, GfxTexFilterMode, GfxVertexBufferFrequency, GfxWrapMode } from "../gfx/platform/GfxPlatform";
 import { SceneContext, SceneDesc, SceneGroup } from "../SceneBase";
 import { FakeTextureHolder } from "../TextureHolder";
@@ -7,22 +6,21 @@ import { SceneGfx, ViewerRenderInput } from "../viewer";
 
 import { GfxRenderHelper } from "../gfx/render/GfxRenderHelper.js";
 import { fillMatrix4x3, fillMatrix4x4 } from "../gfx/helpers/UniformBufferHelpers.js";
-import { mat4, quat, vec3 } from "gl-matrix";
+import { mat4, vec3 } from "gl-matrix";
 import { GfxRenderInstList } from "../gfx/render/GfxRenderInstManager.js";
 import { makeBackbufferDescSimple, standardFullClearRenderPassDescriptor } from "../gfx/helpers/RenderGraphHelpers.js";
 import { GfxrAttachmentSlot } from "../gfx/render/GfxRenderGraph.js";
 
-import { Texture } from "./material";
 import { Geo} from "./geo";
 import { FullbrightShader, VertexLitShader as VertexLitShader } from "./shaders";
-import { loadPcScript } from "./script.js";
-import { WorldGeometry } from "./world.js";
 import { AssetManager } from "./assets.js";
 import { Anim } from "./anim.js";
+import { CameraController } from "../Camera.js";
+import { load_entity, RedlineEntity } from "./entity.js";
 
 export const pathBase = `Redline`;
 
-class RedlineRenderInstList {
+export class RedlineRenderInstList {
     public opaque: GfxRenderInstList = new GfxRenderInstList();
     public transparent: GfxRenderInstList = new GfxRenderInstList();
 }
@@ -60,14 +58,13 @@ export class RedlineRenderer implements SceneGfx {
     private sampler: GfxSampler;
 
     private inputLayout: GfxInputLayout;
-    private billboardInputLayout: GfxInputLayout;
+    // private billboardInputLayout: GfxInputLayout;
 
     constructor(
         private sceneContext: SceneContext,
         public assets: AssetManager,
-        private asset_table: RedlineAsset[],
         private sky: Geo | undefined,
-        private to_render: WorldGeometry[],
+        private entities: RedlineEntity[],
     ) {
         this.renderHelper = new GfxRenderHelper(sceneContext.device, sceneContext);
         const cache = this.renderHelper.renderCache;
@@ -120,31 +117,31 @@ export class RedlineRenderer implements SceneGfx {
             indexBufferFormat: GfxFormat.U16_R,
         });
 
-        this.billboardInputLayout = cache.createInputLayout({
-            vertexAttributeDescriptors: [
-                {
-                    location: VertexLitShader.a_Position,
-                    format: GfxFormat.F32_RG,
-                    bufferByteOffset: 0,
-                    bufferIndex: 0,
-                },
-                {
-                    location: VertexLitShader.a_Uv,
-                    format: GfxFormat.F32_RG,
-                    bufferByteOffset: 8,
-                    bufferIndex: 0,
-                },
-            ],
-
-            vertexBufferDescriptors: [
-                {
-                    byteStride: 16,
-                    frequency: GfxVertexBufferFrequency.PerVertex,
-                },
-            ],
-
-            indexBufferFormat: GfxFormat.U16_R,
-        });
+        // this.billboardInputLayout = cache.createInputLayout({
+        //     vertexAttributeDescriptors: [
+        //         {
+        //             location: VertexLitShader.a_Position,
+        //             format: GfxFormat.F32_RG,
+        //             bufferByteOffset: 0,
+        //             bufferIndex: 0,
+        //         },
+        //         {
+        //             location: VertexLitShader.a_Uv,
+        //             format: GfxFormat.F32_RG,
+        //             bufferByteOffset: 8,
+        //             bufferIndex: 0,
+        //         },
+        //     ],
+        //
+        //     vertexBufferDescriptors: [
+        //         {
+        //             byteStride: 16,
+        //             frequency: GfxVertexBufferFrequency.PerVertex,
+        //         },
+        //     ],
+        //
+        //     indexBufferFormat: GfxFormat.U16_R,
+        // });
 
         for (const tex of this.assets.textures.values()) {
             this.textureHolder.viewerTextures.push(tex);
@@ -153,10 +150,13 @@ export class RedlineRenderer implements SceneGfx {
     }
 
 
-    private renderAnim(inst: RedlineRenderInstList, anim: Anim, pos: mat4, transparent: boolean, dir: number, time: number): void {
+    public renderAnim(inst: RedlineRenderInstList, anim: Anim, pos: mat4, transparent: boolean, dir: number, time: number): void {
         if (anim.sequential) {
             const framerate = anim.sequential.framerate;
-            const frame = Math.floor(time * framerate / 1000) % anim.sequential.frames.length;
+            let frame = Math.floor(time * framerate / 1000) % anim.sequential.frames.length;
+            if (dir < 0) {
+                frame = anim.sequential.frames.length - frame - 1;
+            }
             const model = this.assets.get_geo(anim.sequential.frames[frame]);
             if (model != undefined) {
                 this.renderModel(inst, model, pos, transparent);
@@ -166,7 +166,7 @@ export class RedlineRenderer implements SceneGfx {
         }
     }
 
-    private renderModel(inst: RedlineRenderInstList, model: Geo, pos: mat4, transparent: boolean = false): void {
+    public renderModel(inst: RedlineRenderInstList, model: Geo, pos: mat4, transparent: boolean = false): void {
         for (const mesh of model.meshes) {
             if (mesh.texture == "") continue;
             const tex = this.assets.get_texture(mesh.texture);
@@ -219,7 +219,13 @@ export class RedlineRenderer implements SceneGfx {
         }
     }
 
+    public adjustCameraController(c: CameraController): void {
+        c.setSceneMoveSpeedMult(0.01);
+    }
+
     public render(device: GfxDevice, viewerInput: ViewerRenderInput): void {
+        viewerInput.camera.setClipPlanes(0.01);
+
         this.renderHelper.debugDraw.beginFrame(
             viewerInput.camera.projectionMatrix,
             viewerInput.camera.viewMatrix,
@@ -236,37 +242,8 @@ export class RedlineRenderer implements SceneGfx {
         let offs = 0;
         offs += fillMatrix4x4(data, offs, viewerInput.camera.clipFromWorldMatrix);
 
-        for (const entity of this.to_render) {
-            const mdl = this.asset_table[entity.asset_index]!;
-            if (mdl == undefined) {
-                // Script object or Animated
-                continue;
-            }
-            const model = mdl!;
-
-            if (model instanceof Geo) {
-                this.renderModel(this.renderInstList, model, entity.mat);
-            } else if (model instanceof Anim) {
-                this.renderAnim(this.renderInstList, model, entity.mat, false, 1, viewerInput.time);
-            } else if (model != null) {
-                if (model.anim != null) {
-                    const translate = vec3.create();
-                    const rotation = quat.create();
-                    const scale = vec3.create();
-                    mat4.getTranslation(translate, entity.mat);
-                    mat4.getRotation(rotation, entity.mat);
-                    mat4.getScaling(scale, entity.mat);
-
-                    vec3.multiply(scale, scale, model.anim_scale);
-                    const mat = mat4.create();
-                    mat4.fromRotationTranslationScale(mat, rotation, translate, scale);
-
-                    this.renderAnim(this.renderInstList, model.anim, mat, model.transparent, model.anim_dir, viewerInput.time);
-                }
-                if (model.static != null) {
-                    this.renderModel(this.renderInstList, model.static, entity.mat, model.transparent);
-                }
-            }
+        for (const entity of this.entities) {
+            entity.render(this, this.renderInstList, viewerInput);
         }
 
         if (this.sky) {
@@ -347,33 +324,6 @@ class RedlineSceneDesc implements SceneDesc {
         const assets = new AssetManager(this.pathBase);
         await assets.load(this.id, context);
 
-        // Load base assets
-        const asset_list = assets.world.list_assets();
-        const asset_table: Promise<RedlineAsset>[] = [];
-        for (const asset of asset_list) {
-            console.log(asset_table.length + " " + asset.name);
-            let name = asset.name.toLowerCase();
-            switch (asset.kind) {
-                case 0:
-                    const model = assets.load_geo(name, context);
-                    asset_table.push(model);
-                    break;
-                case 1:
-                    const anim = assets.load_anm(name, context);
-                    asset_table.push(anim);
-                    break;
-                case 2:
-                    const obj = assets.load_obj(name, context);
-                    asset_table.push(obj);
-                    break;
-                default:
-                    asset_table.push((async () => undefined)());
-                    console.log("Unhandled asset type: " + asset.kind);
-                    break;
-            }
-            asset.free();
-        }
-
         const sky_name = assets.world.skybox();
         let sky = undefined
         const ssky = assets.scripts.lookup_sky(sky_name.toLowerCase());
@@ -382,20 +332,16 @@ class RedlineSceneDesc implements SceneDesc {
             sky = await assets.load_geo(sky, context);
         }
 
-        const world_geo = assets.world.list_models();
-        const to_render = [];
-        for (const geo of world_geo) {
-            to_render.push(new WorldGeometry(geo));
-            geo.free();
+        const entities_raw = assets.world.entities();
+        const entities = [];
+        for (const raw of entities_raw) {
+            const ent = await load_entity(raw, assets, context);
+            if (ent) {
+                entities.push(ent);
+            }
         }
-        const world_anm = assets.world.list_anims();
-        for (const anm of world_anm) {
-            to_render.push(new WorldGeometry(anm));
-            anm.free();
-        }
-        const table = await Promise.all(asset_table);
 
-        return new RedlineRenderer(context, assets, table, sky, to_render);
+        return new RedlineRenderer(context, assets, sky, entities);
     }
 }
 
