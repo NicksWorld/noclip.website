@@ -179,7 +179,7 @@ impl Anim {
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
 #[ts(export, export_to = "redline.ts", rename = "Entity4")]
-pub struct Entity4 {
+pub struct AirBox {
     unk1: [f32; 3],
     unk2: u16,
     #[deku(cond = "version < 0x21")]
@@ -208,7 +208,7 @@ pub struct Entity5Ext {
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
 #[ts(export, export_to = "redline.ts", rename = "Entity5")]
-pub struct Entity5 {
+pub struct NavPoint {
     unk1: [f32; 3],
     unk2: u16,
     #[deku(cond = "version < 0x14")]
@@ -221,7 +221,7 @@ pub struct Entity5 {
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
 #[ts(export, export_to = "redline.ts", rename = "Entity6")]
-pub struct Entity6 {
+pub struct Light {
     unk1: [f32; 3],
     unk2: [u16; 5], // Not really array
     unk3: u8,
@@ -241,7 +241,7 @@ pub struct Entity6 {
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
 #[ts(export, export_to = "redline.ts", rename = "Entity7")]
-pub struct Entity7 {
+pub struct Emitter {
     unk1: [f32; 3],
     unk2: u16,
     unk3: u16,
@@ -377,7 +377,7 @@ pub struct Item {
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
 #[ts(export, export_to = "redline.ts", rename = "Entity12")]
-pub struct Entity12 {
+pub struct Quadrant {
     unk1: [f32; 3],
     unk2: u16,
     #[deku(cond = "version < 0x21")]
@@ -397,7 +397,7 @@ pub struct Entity12 {
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
 #[ts(export, export_to = "redline.ts", rename = "Entity13")]
-pub struct Entity13 {
+pub struct Camera {
     unk1: [f32; 3],
     unk2: u16,
     unk3: u16,
@@ -414,7 +414,7 @@ pub struct Entity13 {
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
 #[ts(export, export_to = "redline.ts", rename = "Entity15")]
-pub struct Entity15 {
+pub struct Turret {
     unk1: [f32; 3],
     unk2: u16,
     unk3: u16,
@@ -432,15 +432,165 @@ pub enum WorldEntity {
     Anim(Anim),
     Person(Person), // Enemy spawnpoints?
     Car(Car),
-    Unknown4(Entity4),
-    Unknown5(Entity5),
-    Unknown6(Entity6),
-    Unknown7(Entity7),
+    AirBox(AirBox),
+    NavPoint(NavPoint),
+    Light(Light),
+    Emitter(Emitter),
     SoundEffect(SoundEffect),
     Item(Item), // Pickups
-    Unknown12(Entity12),
-    Unknown13(Entity13),
-    Unknown15(Entity15),
+    Quadrant(Quadrant),
+    Camera(Camera),
+    Turret(Turret),
+}
+
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
+#[ts(export, export_to = "redline.ts", rename = "Sector1")]
+#[allow(unused)]
+struct Sector1 {
+    kind: u8,
+
+    unk1: u16,
+    unk2: u16,
+    unk3: f32,
+    unk4: f32,
+    unk5: f32,
+    unk6: u32,
+    unk7: u16,
+    unk8: u16,
+
+    #[deku(cond = "*kind == 1")]
+    unk9: u16,
+    #[deku(reader = "read_len_string(deku::reader)", cond = "*kind == 2")]
+    unk10: String,
+    #[deku(cond = "*kind == 3")]
+    unk11: u16,
+    #[deku(reader = "read_len_string(deku::reader)", cond = "*kind == 3")]
+    unk12: String,
+}
+
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
+#[ts(export, export_to = "redline.ts", rename = "Sector2")]
+#[allow(unused)]
+struct Sector2 {
+    kind: u8,
+
+    unk1: u16,
+    unk2: u16,
+    unk3: u32,
+    unk4: u32,
+    unk5: u32,
+    unk6: u32,
+    unk7: u16,
+
+    #[deku(cond = "*kind == 1")]
+    unk8: u16,
+
+    #[deku(reader = "read_len_string(deku::reader)", cond = "*kind == 2")]
+    sound: String,
+}
+
+#[derive(Debug, Serialize, ts_rs::TS)]
+#[ts(export, export_to = "redline.ts", rename = "SectorData")]
+#[allow(unused)]
+enum SectorData {
+    Unknown1(Sector1),
+    Unknown2(Sector2),
+    None,
+}
+
+fn read_sector_data<R: std::io::Read + std::io::Seek>(
+    reader: &mut deku::reader::Reader<R>,
+) -> Result<SectorData, DekuError> {
+    let mut tag = [0u8; 1];
+    reader.read_bytes_const(&mut tag, Order::Msb0)?;
+
+    match tag[0] {
+        0x01 => Ok(SectorData::Unknown1(Sector1::from_reader_with_ctx(
+            reader,
+            (),
+        )?)),
+        0x02 => Ok(SectorData::Unknown2(Sector2::from_reader_with_ctx(
+            reader,
+            (),
+        )?)),
+        0x7f => Ok(SectorData::None),
+        _ => {
+            log(&format!("Unknown format {:#?}", tag));
+            panic!("Missing sector data!");
+        }
+    }
+}
+
+#[derive(DekuRead, Debug)]
+#[deku(ctx = "version: u32")]
+#[allow(unused)]
+struct Sector {
+    #[deku(reader = "read_len_string(deku::reader)")]
+    name: String, // Has a special case for starting with _
+    unk2_count: u32,
+    #[deku(count = "unk2_count")]
+    unk3: Vec<u32>,
+    //unk4: u8, // Special case for 0x7f
+    #[deku(reader = "read_sector_data(deku::reader)")]
+    data: SectorData,
+}
+
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
+#[allow(unused)]
+#[ts(export, export_to = "redline.ts", rename = "Visibility")]
+struct VisExtInner {
+    #[deku(reader = "read_len_string(deku::reader)")]
+    name: String,
+    count: u16,
+    #[deku(count = "count")]
+    ent_idx: Vec<u16>,
+}
+
+#[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
+#[deku(ctx = "version: u32")]
+#[ts(export, export_to = "redline.ts", rename = "WorldVisibility")]
+#[allow(unused)]
+struct Visibility {
+    #[deku(cond = "version > 0xd")]
+    unk1: u8,
+    #[deku(cond = "*unk1 != 0 && version > 0xd")]
+    count: u16,
+    #[deku(count = "count")]
+    clusters: Vec<VisExtInner>,
+}
+
+#[derive(DekuRead, Debug)]
+#[allow(unused)]
+struct CollisionGrid {
+    //#[deku(assert = "*kind != 0 && *kind < 6")] // "FATAL Error! No collision grid"
+    kind: u32,
+
+    // Later overwrites the first for some reason? Likely dimensions
+    unk1: u16,
+    unk2: u16,
+
+    unk3: [f32; 3],
+    unk4: [f32; 3],
+
+    // Size somehow, over 500.0 on either is "WARN: WorldGrid size is huge"
+    unk5: f32,
+    unk6: f32,
+
+    count: u16,
+    unk8: u32,
+    #[deku(count = "count", cond = "*kind == 3")]
+    unk9: Vec<[u8; 0x74]>,
+    #[deku(count = "count", cond = "*kind == 2")]
+    unk10: Vec<[u8; 0x50]>,
+    #[deku(count = "count", cond = "*kind == 4")]
+    unk11: Vec<[u8; 0x38]>,
+    #[deku(count = "count", cond = "*kind < 2 || *kind > 4")]
+    unk12: Vec<[u8; 0x44]>,
+
+    #[deku(count = "(*unk2 as usize * *unk2 as usize) << 1")]
+    unk13: Vec<u8>,
+    #[deku(count = "(*unk8 as usize) << 1")]
+    unk14: Vec<u8>,
 }
 
 fn read_world_entity<R: std::io::Read + std::io::Seek>(
@@ -458,18 +608,21 @@ fn read_world_entity<R: std::io::Read + std::io::Seek>(
             0x01 => WorldEntity::Anim(Anim::from_reader_with_ctx(reader, version)?),
             0x02 => WorldEntity::Person(Person::from_reader_with_ctx(reader, version)?),
             0x03 => WorldEntity::Car(Car::from_reader_with_ctx(reader, version)?),
-            0x04 => WorldEntity::Unknown4(Entity4::from_reader_with_ctx(reader, version)?),
-            0x05 => WorldEntity::Unknown5(Entity5::from_reader_with_ctx(reader, version)?),
-            0x06 => WorldEntity::Unknown6(Entity6::from_reader_with_ctx(reader, version)?),
-            0x07 => WorldEntity::Unknown7(Entity7::from_reader_with_ctx(reader, version)?),
+            0x04 => WorldEntity::AirBox(AirBox::from_reader_with_ctx(reader, version)?),
+            0x05 => WorldEntity::NavPoint(NavPoint::from_reader_with_ctx(reader, version)?),
+            0x06 => WorldEntity::Light(Light::from_reader_with_ctx(reader, version)?),
+            0x07 => WorldEntity::Emitter(Emitter::from_reader_with_ctx(reader, version)?),
             0x08 => WorldEntity::SoundEffect(SoundEffect::from_reader_with_ctx(reader, version)?),
             0x09 => WorldEntity::Item(Item::from_reader_with_ctx(reader, version)?),
-            0x0C => WorldEntity::Unknown12(Entity12::from_reader_with_ctx(reader, version)?),
-            0x0D => WorldEntity::Unknown13(Entity13::from_reader_with_ctx(reader, version)?),
-            0x0F => WorldEntity::Unknown15(Entity15::from_reader_with_ctx(reader, version)?),
+            // 0x0a => Object
+            // 0x0b => Sprite
+            0x0C => WorldEntity::Quadrant(Quadrant::from_reader_with_ctx(reader, version)?),
+            0x0D => WorldEntity::Camera(Camera::from_reader_with_ctx(reader, version)?),
+            // 0x0e => Console
+            0x0F => WorldEntity::Turret(Turret::from_reader_with_ctx(reader, version)?),
             0xFF => break, // End condition
             _ => {
-                break;
+                panic!("Missing entities!");
             } // TODO
         });
     }
@@ -533,6 +686,19 @@ pub struct World {
     // Large list of unions. Likely all world entities
     #[deku(reader = "read_world_entity(deku::reader, *version)")]
     entities: Vec<WorldEntity>,
+
+    #[deku(cond = "*version > 2")]
+    sector_count: u32,
+    #[deku(count = "sector_count", cond = "*version > 2", ctx = "*version")]
+    sectors: Vec<Sector>,
+    // Version < 7 has vis immediately
+    //#[deku(cond = "*version < 7", ctx = "*version")]
+    //vis: Option<Visibility>,
+    //#[deku(assert = "*col_present != 0")]
+    col_present: u8,
+    collision: CollisionGrid,
+    #[deku(ctx = "*version")]
+    vis: Visibility,
 }
 
 #[wasm_bindgen]
@@ -544,7 +710,8 @@ extern "C" {
 #[wasm_bindgen(js_class = "RedlineWorld")]
 impl World {
     pub fn load(raw: Vec<u8>) -> World {
-        World::from_bytes((&raw, 0)).unwrap().1
+        let wld = World::from_bytes((&raw, 0)).unwrap().1;
+        wld
     }
 
     /// Textures listed in core texture block. This is not exhaustive.
@@ -567,7 +734,13 @@ impl World {
             .unwrap_or_default()
     }
 
+    #[wasm_bindgen(unchecked_return_type = "Redline.Entity[]")]
     pub fn entities(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.entities).unwrap()
+    }
+
+    #[wasm_bindgen(unchecked_return_type = "Redline.WorldVisibility")]
+    pub fn vis_sets(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.vis).unwrap()
     }
 }

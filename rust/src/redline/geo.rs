@@ -1,4 +1,4 @@
-use deku::{DekuContainerRead, DekuRead};
+use deku::{DekuContainerRead, DekuRead, DekuWrite};
 use js_sys::{ArrayBuffer, Uint8Array};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -14,7 +14,7 @@ struct Mesh {
     #[deku(reader = "read_padded_string(deku::reader, 40)")]
     pub name: String,
     pub unk: u16,
-    pub color: u32,
+    pub color: [u8; 4],
     pub vertex_offset: u16,
     pub vertex_count: u16,
     pub index_offset: u16,
@@ -25,7 +25,7 @@ struct Mesh {
     pub unk4: u32,
 }
 
-#[derive(DekuRead, Debug)]
+#[derive(DekuRead, DekuWrite, Debug)]
 #[allow(unused)]
 struct Vertex {
     pos: [f32; 3],
@@ -45,7 +45,7 @@ struct Geo {
     // Header
     #[deku(assert = "magic == b\"BGGF\"")]
     magic: [u8; 4],
-    version: u32,
+    pub version: u32,
     index_count: u32,
     vertex_count: u32,
     mesh_count: u32,
@@ -71,7 +71,26 @@ impl Geo {
     pub fn load(raw: &[u8]) -> Geo {
         // TODO: Do post-processing on the vertex buffer, such as setting color to 0xFFFFFFFF for
         // fullbright
-        Geo::from_bytes((raw, 0)).unwrap().1
+        let mut geo = Geo::from_bytes((raw, 0)).unwrap().1;
+
+        // Process vertex buffers (matching decompiled behavior)
+        for mesh in &mut geo.meshes {
+            // Tint (override vertex colors for mesh)
+            if (mesh.render_flags & (0x08 | 0x10 | 0x2) != 0) {
+                geo.vertex_buffer
+                    .chunks_mut(9 * 4)
+                    .skip(mesh.vertex_offset as usize)
+                    .map(|x| {
+                        let off = 4 * 3;
+                        x[off] = mesh.color[0];
+                        x[off + 1] = mesh.color[1];
+                        x[off + 2] = mesh.color[2];
+                        x[off + 3] = mesh.color[3];
+                    });
+            }
+        }
+
+        geo
     }
 
     pub fn index_buffer(&self) -> ArrayBuffer {

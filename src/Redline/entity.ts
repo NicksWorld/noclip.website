@@ -9,6 +9,7 @@ import { Anim } from "./anim.js";
 import { SceneContext } from "../SceneBase.js";
 
 export interface RedlineEntity {
+    shouldCull: boolean;
     render(renderer: RedlineRenderer, inst: RedlineRenderInstList, viewerInput: ViewerRenderInput): void;
 }
 
@@ -36,10 +37,12 @@ class RedlineModel implements RedlineEntity {
     private asset_idx: number;
     private asset: WorldAsset;
 
+    public shouldCull = true;
+
     constructor(entity: rust.Redline.EntityModel | rust.Redline.EntityAnim, assets: AssetManager) {
         this.asset_idx = entity.asset_idx;
         this.asset = assets.asset_table[this.asset_idx];
-        
+
         this.mat = mat4.create();
         mat4.identity(this.mat);
 
@@ -69,7 +72,9 @@ class RedlineModel implements RedlineEntity {
 class RedlineItem implements RedlineEntity {
     private mat: mat4;
     private item: rust.Redline.ScriptItem;
-    private mdl: Geo;
+    private mdl: Geo | undefined;
+
+    public shouldCull = false;
 
     constructor(entity: rust.Redline.EntityItem, assets: AssetManager) {
         this.mat = mat4.create();
@@ -86,10 +91,11 @@ class RedlineItem implements RedlineEntity {
     }
 
     public async load(assets: AssetManager, context: SceneContext) {
-        this.mdl = (await assets.load_geo(this.item.geo, context))!;
+        this.mdl = (await assets.load_geo(this.item.geo, context));
     }
 
     public render(renderer: RedlineRenderer, inst: RedlineRenderInstList, viewerInput: ViewerRenderInput): void {
+        if (!this.mdl) return;
         const mat = mat4.create();
         mat4.identity(mat);
         if (this.item.rotation_speed != 0) {

@@ -16,6 +16,12 @@ enum WorldAssetKind {
 
 export type WorldAsset = Geo | Anim | RedlineObject | undefined;
 
+
+type CacheResult<T> = {
+    cache: T | undefined,
+    raw: ArrayBufferSlice | undefined
+};
+
 export class AssetManager {
     public textures: Map<string, Texture> = new Map();
     public animations: Map<string, Anim> = new Map();
@@ -25,6 +31,8 @@ export class AssetManager {
     public scripts: rust.RedlineScript;
 
     public asset_table: WorldAsset[];
+
+    private load_cache: Map<string, any> = new Map();
 
     constructor(public pathBase: string) {};
 
@@ -76,7 +84,8 @@ export class AssetManager {
         this.scripts = (await this.load_script(main_script, script_version, context))!;
         this.world = (await this.load_world(world, context))!;
 
-        const textures = Promise.all(this.world.list_textures().map((tex) => this.load_texture(tex, context)));
+        const textures = this.world.list_textures().map((tex) => this.load_texture(tex, context));
+        textures.push(this.load_texture("reflectionmap", context));
 
         const assets = this.world.list_assets();
         const asset_table = Promise.all(assets.map(async (ass) => {
@@ -85,7 +94,7 @@ export class AssetManager {
             return v;
         }));
 
-        await textures;
+        await Promise.all(textures);
         this.asset_table = await asset_table;
     }
 
@@ -139,53 +148,59 @@ export class AssetManager {
         return out;
     }
 
+
+    private async checkCache<T>(map: Map<string, T>, filename: string, context: SceneContext, fn: (t: ArrayBufferSlice) => Promise<T>): Promise<T | undefined> {
+        const t = map.get(filename);
+        if (t) return t;
+
+        let promise = this.load_cache.get(filename);
+        if (promise) return await promise;
+
+        promise = (async() => {
+            const raw = await this.fetch(context, filename);
+            if (raw) {
+                const v = await fn(raw);
+                map.set(filename, v);
+                return v;
+            }
+            return undefined;
+        })();
+        this.load_cache.set(filename, promise);
+        return await promise;
+    }
+
     public async load_anm(name: string, context: SceneContext): Promise<Anim | undefined> {
-        let raw = (await this.fetch(context, this.formatFilename(name, "anm")))!;
+       return await this.checkCache(this.animations, this.formatFilename(name, "anm"), context, async (raw) => {
+            const anim = new Anim(name, context.device, raw!);
 
-        const anim = new Anim(name, context.device, raw);
+            if (anim.sequential) {
+                const frames = anim.sequential.frames.map((frame) => this.load_geo(frame, context));
+                await Promise.all(frames);
+            }
 
-        if (anim.sequential) {
-            const frames = anim.sequential.frames.map((frame) => this.load_geo(frame, context));
-            await Promise.all(frames);
-        }
-
-        this.animations.set(name, anim);
-        return anim;
+            return anim;
+       });
     }
 
     public async load_texture(name: string, context: SceneContext): Promise<Texture | undefined> {
-        if (name == "")  return;
-        name = this.formatFilename(name, "btf", "tga");
-        let texture = this.textures.get(name);
-        if (texture != undefined) return texture;
-        
-        const raw = await this.fetch(context, name);
-        if (raw == undefined) return;
-        
-        texture = new Texture(name, context.device, raw);
-        this.textures.set(name, texture);
-        return texture;
+        return await this.checkCache(this.textures, this.formatFilename(name, "btf", "tga"), context, async (raw) => {
+            return new Texture(name, context.device, raw);
+        });
     }
 
     public async load_geo(name: string, context: SceneContext): Promise<Geo | undefined> {
         if (name == "") return;
-        name = this.formatFilename(name, "geo");
-        let geo = this.geometry.get(name);
-        if (geo != undefined) return geo;
-        
-        const raw = await this.fetch(context, name);
-        if (raw == undefined) return;
-        
-        geo = new Geo(name, context.device, raw);
-        this.geometry.set(name, geo);
+        return await this.checkCache(this.geometry, this.formatFilename(name, "geo"), context, async (raw) => {
+            const geo = new Geo(name, context.device, raw);
 
-        // Preload textures
-        // TODO: Determine if this is really needed; they may be in the world data
-        for (const mesh of geo.meshes) {
-            this.load_texture(mesh.texture, context);
-        }
+            // Preload textures
+            // TODO: Determine if this is really needed; they may be in the world data
+            for (const mesh of geo.meshes) {
+                await this.load_texture(mesh.texture, context);
+            }
 
-        return geo;
+            return geo;
+        });
     }
 
     public destroy(device: GfxDevice) {

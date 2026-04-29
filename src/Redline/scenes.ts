@@ -12,11 +12,13 @@ import { makeBackbufferDescSimple, standardFullClearRenderPassDescriptor } from 
 import { GfxrAttachmentSlot } from "../gfx/render/GfxRenderGraph.js";
 
 import { Geo} from "./geo";
-import { FullbrightShader, VertexLitShader as VertexLitShader } from "./shaders";
+import { ChromeShader, FullbrightShader, VertexLitShader as VertexLitShader } from "./shaders";
 import { AssetManager } from "./assets.js";
 import { Anim } from "./anim.js";
 import { CameraController } from "../Camera.js";
 import { load_entity, RedlineEntity } from "./entity.js";
+import * as UI from "../ui";
+import { rust } from "../rustlib";
 
 export const pathBase = `Redline`;
 
@@ -55,21 +57,27 @@ export class RedlineRenderer implements SceneGfx {
 
     private vertexLitShaderProgram: GfxProgram;
     private fullbrightShaderProgram: GfxProgram;
+    private chromeShaderProgram: GfxProgram;
     private sampler: GfxSampler;
 
     private inputLayout: GfxInputLayout;
     // private billboardInputLayout: GfxInputLayout;
 
+    private visibilityLayers: boolean[] = [];
+    private showHidden: boolean = false;
+
     constructor(
         private sceneContext: SceneContext,
         public assets: AssetManager,
         private sky: Geo | undefined,
-        private entities: RedlineEntity[],
+        private entities: (RedlineEntity | undefined)[],
+        private visibility: rust.Redline.Visibility[],
     ) {
         this.renderHelper = new GfxRenderHelper(sceneContext.device, sceneContext);
         const cache = this.renderHelper.renderCache;
 
         this.vertexLitShaderProgram = cache.createProgram(new VertexLitShader());
+        this.chromeShaderProgram = cache.createProgram(new ChromeShader());
         this.fullbrightShaderProgram = cache.createProgram(new FullbrightShader());
         this.sampler = cache.createSampler({
             minFilter: GfxTexFilterMode.Bilinear,
@@ -149,6 +157,37 @@ export class RedlineRenderer implements SceneGfx {
         this.textureHolder.onnewtextures();
     }
 
+    public createPanels(): UI.Panel[] {
+        const panels = [];
+        panels.push(this.createLayerPanel());
+        return panels;
+    }
+
+    private createLayerPanel(): UI.Panel {
+        const layersPanel = new UI.Panel();
+        layersPanel.customHeaderBackgroundColor = UI.COOL_BLUE_COLOR;
+        layersPanel.setTitle(UI.LAYER_ICON, "Visibility");
+
+        // Hidden
+        const showHidden = new UI.Checkbox("Show Hidden", false);
+        showHidden.onchanged = () => {
+            this.showHidden = showHidden.checked;
+        };
+        layersPanel.contents.appendChild(showHidden.elem);
+
+        // Visibility Clusters
+        let i = 0;
+        for (const cluster of this.assets.world.vis_sets().clusters) {
+            const checkbox = new UI.Checkbox(cluster.name, true);
+            const idx = i;
+            checkbox.onchanged = () => {
+                this.visibilityLayers[idx] = checkbox.checked;
+            };
+            layersPanel.contents.appendChild(checkbox.elem);
+            i++;
+        }
+        return layersPanel;
+    }
 
     public renderAnim(inst: RedlineRenderInstList, anim: Anim, pos: mat4, transparent: boolean, dir: number, time: number): void {
         if (anim.sequential) {
@@ -168,11 +207,11 @@ export class RedlineRenderer implements SceneGfx {
 
     public renderModel(inst: RedlineRenderInstList, model: Geo, pos: mat4, transparent: boolean = false): void {
         for (const mesh of model.meshes) {
-            if (mesh.texture == "") continue;
-            const tex = this.assets.get_texture(mesh.texture);
-            if (tex == undefined) continue; // TODO (vertex colored)
+            // Appears to be collision meshes and triggers
+            // TODO: This culls too much, and should likely be doing PVS lookup
+            // if (mesh.texture == "" && mesh.render_flags == 0 && mesh.unk4 == 0) continue;
+            let tex = this.assets.get_texture(mesh.texture);
             const renderInst = this.renderHelper.renderInstManager.newRenderInst();
-
             let inst_list = inst.opaque;
 
             // Determine correct shader setup
@@ -183,24 +222,32 @@ export class RedlineRenderer implements SceneGfx {
                 });
                 inst_list = inst.transparent;
             }
-            if (tex.gfxTexture.pixelFormat == GfxFormat.U8_RGBA_NORM) {
-                tex.gfxTexture.pixelFormat
-                renderInst.setMegaStateFlags({
-                    cullMode: GfxCullMode.Front,
-                    depthWrite: true,
-                    attachmentsState: attachmentStates,
-                });
-            }
+            // if (tex.gfxTexture.pixelFormat == GfxFormat.U8_RGBA_NORM) {
+            //     tex.gfxTexture.pixelFormat
+            //     renderInst.setMegaStateFlags({
+            //         cullMode: GfxCullMode.Front,
+            //         depthWrite: true,
+            //         attachmentsState: attachmentStates,
+            //     });
+            // }
             // unk4 0x10000 appears to be the flag for vertex color baked lighting
-            if (mesh.render_flags & 0x4 || ((mesh.unk4 & 0x10000) == 0)) {
+            if (mesh.render_flags & 0x4) {
                 renderInst.setGfxProgram(this.fullbrightShaderProgram);
-            } else {
+            } else if (mesh.render_flags & 0x12) {
+                renderInst.setGfxProgram(this.vertexLitShaderProgram);
+                // TODO: This needs to blend between texture and reflectionmap,
+                // based on vertex color alpha
+                tex = this.assets.get_texture("reflectionmap")!;
+            } else if ((mesh.unk4 & 0x10000) == 0) {
+                renderInst.setGfxProgram(this.fullbrightShaderProgram);
+            }else {
                 renderInst.setGfxProgram(this.vertexLitShaderProgram);
             }
 
             const position = renderInst.allocateUniformBufferF32(VertexLitShader.ub_Position, 12);
             fillMatrix4x3(position, 0, pos);
 
+            if (!tex) continue;
             renderInst.setSamplerBindings(0, [
                 {
                     gfxTexture: tex.gfxTexture,
@@ -241,9 +288,23 @@ export class RedlineRenderer implements SceneGfx {
         const data = template.allocateUniformBufferF32(VertexLitShader.ub_SceneParams, 16);
         let offs = 0;
         offs += fillMatrix4x4(data, offs, viewerInput.camera.clipFromWorldMatrix);
+            
+        for (let ent_idx = 0; ent_idx < this.entities.length; ent_idx++) {
+            const ent = this.entities[ent_idx];
+            if (!ent) continue;
+            if (!this.showHidden && ent.shouldCull) {
+                let show = false;
+                for (let i = 0; i < this.visibility.length; i++) {
+                    if (this.visibilityLayers[i] == false) continue;
+                    if (this.visibility[i].ent_idx.includes(ent_idx)) {
+                        show = true;
+                        break;
+                    }
+                }
+                if (!show) continue;
+            }
 
-        for (const entity of this.entities) {
-            entity.render(this, this.renderInstList, viewerInput);
+            ent.render(this, this.renderInstList, viewerInput);
         }
 
         if (this.sky) {
@@ -336,12 +397,10 @@ class RedlineSceneDesc implements SceneDesc {
         const entities = [];
         for (const raw of entities_raw) {
             const ent = await load_entity(raw, assets, context);
-            if (ent) {
-                entities.push(ent);
-            }
+            entities.push(ent);
         }
 
-        return new RedlineRenderer(context, assets, sky, entities);
+        return new RedlineRenderer(context, assets, sky, entities, assets.world.vis_sets().clusters);
     }
 }
 

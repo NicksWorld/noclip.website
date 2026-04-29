@@ -36,6 +36,11 @@ export class Geo {
 
         this.meshes = model.meshes();
 
+        if (name.includes("trainer_cdbarrier")) {
+            console.log(model);
+            console.log(this.meshes);
+        }
+
         model.free();
     }
 
