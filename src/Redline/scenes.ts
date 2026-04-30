@@ -51,7 +51,7 @@ export const attachmentStates: GfxAttachmentState[] = [{
 export class RedlineRenderer implements SceneGfx {
     public textureHolder = new FakeTextureHolder([]);
 
-    private renderHelper: GfxRenderHelper;
+    public renderHelper: GfxRenderHelper;
     private renderInstList = new RedlineRenderInstList();
     private skyRenderInstList = new RedlineRenderInstList();
 
@@ -65,6 +65,7 @@ export class RedlineRenderer implements SceneGfx {
 
     private visibilityLayers: boolean[] = [];
     private showHidden: boolean = false;
+    public showQuads: boolean = false;
 
     constructor(
         private sceneContext: SceneContext,
@@ -174,6 +175,13 @@ export class RedlineRenderer implements SceneGfx {
             this.showHidden = showHidden.checked;
         };
         layersPanel.contents.appendChild(showHidden.elem);
+
+        // Quadrants
+        const showQuads = new UI.Checkbox("Show Quadrants", false);
+        showQuads.onchanged = () => {
+            this.showQuads = showQuads.checked;
+        };
+        layersPanel.contents.appendChild(showQuads.elem);
 
         // Visibility Clusters
         let i = 0;

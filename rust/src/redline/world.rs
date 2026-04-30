@@ -74,12 +74,12 @@ pub struct Texture {
         cond = "version > 0x1e",
         reader = "read_len_string(deku::reader).map(|x| Some(x))"
     )]
-    unknown: Option<String>,
+    surface_script: Option<String>, // Surface script, defines friction/noises/etc.
 
+    // These values get discarded during load
     unk1: u8,
     unk2: u8,
     unk3: u8,
-
     unk4: f32,
     unk5: f32,
     unk6: u32,
@@ -90,9 +90,9 @@ pub struct Texture {
 
 #[derive(DekuRead, Debug)]
 #[allow(unused)]
-pub struct UnknownV39 {
+pub struct Fog {
     #[deku(reader = "read_len_string(deku::reader)")]
-    unk1: String,
+    name: String,
     unk2: u8,
     unk3: u8,
     unk4: u8,
@@ -178,7 +178,7 @@ impl Anim {
 #[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-#[ts(export, export_to = "redline.ts", rename = "Entity4")]
+#[ts(export, export_to = "redline.ts", rename = "EntityAirBox")]
 pub struct AirBox {
     unk1: [f32; 3],
     unk2: u16,
@@ -195,7 +195,7 @@ pub struct AirBox {
 #[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-#[ts(export, export_to = "redline.ts", rename = "Entity5")]
+#[ts(export, export_to = "redline.ts", rename = "EntityNavPointExt")]
 pub struct Entity5Ext {
     unk1: [u16; 6], // Not really an array
     #[deku(cond = "version > 0x16")]
@@ -207,7 +207,7 @@ pub struct Entity5Ext {
 #[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-#[ts(export, export_to = "redline.ts", rename = "Entity5")]
+#[ts(export, export_to = "redline.ts", rename = "EntityNavPoint")]
 pub struct NavPoint {
     unk1: [f32; 3],
     unk2: u16,
@@ -220,7 +220,7 @@ pub struct NavPoint {
 #[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-#[ts(export, export_to = "redline.ts", rename = "Entity6")]
+#[ts(export, export_to = "redline.ts", rename = "EntityLight")]
 pub struct Light {
     unk1: [f32; 3],
     unk2: [u16; 5], // Not really array
@@ -240,7 +240,7 @@ pub struct Light {
 #[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-#[ts(export, export_to = "redline.ts", rename = "Entity7")]
+#[ts(export, export_to = "redline.ts", rename = "EntityEmitter")]
 pub struct Emitter {
     unk1: [f32; 3],
     unk2: u16,
@@ -376,27 +376,29 @@ pub struct Item {
 #[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-#[ts(export, export_to = "redline.ts", rename = "Entity12")]
+#[ts(export, export_to = "redline.ts", rename = "EntityQuadrant")]
 pub struct Quadrant {
-    unk1: [f32; 3],
+    pos: [f32; 3],
     unk2: u16,
     #[deku(cond = "version < 0x21")]
-    unk3: [f32; 3],
+    extents: [f32; 3], // used to generate bounds if present
     #[deku(cond = "version > 0x20")]
-    unk4: [f32; 10],
-    unk5: u16,
+    corners: [[f32; 2]; 4], // xz coords of corners
+    #[deku(cond = "version > 0x20")]
+    y_range: [f32; 2], // y range
+    vis: u16, // unverified
     #[deku(cond = "version > 0x26")]
     unk6: u16,
     #[deku(cond = "version > 0x27")]
-    unk7: f32,
+    unk7: f32, // fog related?
     #[deku(cond = "version > 0x27", reader = "read_len_string_opt(deku::reader)")]
-    unk8: Option<String>,
+    fog: Option<String>, // References world.fog
 }
 
 #[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-#[ts(export, export_to = "redline.ts", rename = "Entity13")]
+#[ts(export, export_to = "redline.ts", rename = "EntityCamera")]
 pub struct Camera {
     unk1: [f32; 3],
     unk2: u16,
@@ -413,7 +415,7 @@ pub struct Camera {
 #[derive(DekuRead, Debug, Serialize, ts_rs::TS)]
 #[deku(ctx = "version: u32")]
 #[allow(unused)]
-#[ts(export, export_to = "redline.ts", rename = "Entity15")]
+#[ts(export, export_to = "redline.ts", rename = "EntityTurret")]
 pub struct Turret {
     unk1: [f32; 3],
     unk2: u16,
@@ -641,10 +643,10 @@ pub struct World {
     version: u32,
 
     #[deku(cond = "*version > 0x24")]
-    unk1: Option<[u8; 0x20]>,
+    unk1: Option<[u8; 0x20]>, // Seemingly unused?
     unk2: u32,
-    unk3: u32,
-    unk4: u32,
+    unk3: f32,
+    unk4: f32,
 
     /// Filename of .evt script
     #[deku(
@@ -664,26 +666,27 @@ pub struct World {
     textures: Vec<Texture>,
 
     #[deku(cond = "*version > 0x27")]
-    unk_v39_count: u16,
-    #[deku(count = "*unk_v39_count")]
-    unknown_v39: Vec<UnknownV39>,
+    fog_count: u16,
+    #[deku(count = "*fog_count")]
+    fog: Vec<Fog>,
 
-    // More models, but only a couple?
+    // Data seems to be discarded, likely deprecated
     #[deku(cond = "*version > 0x10")]
-    unk_v16_count: u16,
-    #[deku(reader = "read_len_string_vec(deku::reader, *unk_v16_count)")]
-    unk_v16: Vec<String>,
+    deprecated_mdl_count: u16,
+    #[deku(reader = "read_len_string_vec(deku::reader, *deprecated_mdl_count)")]
+    deprecated_mdls: Vec<String>,
 
     // Models/Scripts/Animations
     asset_count: u32,
     #[deku(count = "*asset_count", ctx = "*version")]
     assets: Vec<Asset>,
 
+    // Often empty
     unk7_count: u32,
     #[deku(count = "*unk7_count", ctx = "*version")]
     unk7: Vec<Unknown7>,
 
-    // Large list of unions. Likely all world entities
+    // World "tiles", or entities
     #[deku(reader = "read_world_entity(deku::reader, *version)")]
     entities: Vec<WorldEntity>,
 
@@ -691,10 +694,8 @@ pub struct World {
     sector_count: u32,
     #[deku(count = "sector_count", cond = "*version > 2", ctx = "*version")]
     sectors: Vec<Sector>,
-    // Version < 7 has vis immediately
-    //#[deku(cond = "*version < 7", ctx = "*version")]
-    //vis: Option<Visibility>,
-    //#[deku(assert = "*col_present != 0")]
+
+    // Version < 7 prior to CollisionGrid. No maps are that low of a version
     col_present: u8,
     collision: CollisionGrid,
     #[deku(ctx = "*version")]

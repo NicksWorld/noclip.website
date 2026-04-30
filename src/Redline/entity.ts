@@ -1,5 +1,5 @@
 
-import { mat4, vec3 } from "gl-matrix";
+import { mat4, ReadonlyVec2, ReadonlyVec3, vec3 } from "gl-matrix";
 import { rust } from "../rustlib.js";
 import { AssetManager, WorldAsset } from "./assets.js";
 import { RedlineRenderer, RedlineRenderInstList } from "./scenes.js";
@@ -7,6 +7,7 @@ import { ViewerRenderInput } from "../viewer.js";
 import { Geo } from "./geo.js";
 import { Anim } from "./anim.js";
 import { SceneContext } from "../SceneBase.js";
+import * as Color from "../Color";
 
 export interface RedlineEntity {
     shouldCull: boolean;
@@ -24,6 +25,9 @@ export async function load_entity(entity: rust.Redline.Entity, assets: AssetMana
         const item = new RedlineItem(entity.Item, assets);
         await item.load(assets, context);
         return item;
+    }
+    if ("Quadrant" in entity) {
+        return new RedlineQuadrant(entity.Quadrant, assets);
     }
     return;
 }
@@ -106,5 +110,49 @@ class RedlineItem implements RedlineEntity {
         mat4.multiply(mat, this.mat, mat);
 
         renderer.renderModel(inst, this.mdl, mat);
+    }
+}
+
+class RedlineQuadrant implements RedlineEntity {
+    private mat: mat4;
+    private asset_idx: number;
+    private asset: WorldAsset;
+
+    public shouldCull = false;
+
+    private center: ReadonlyVec3;
+
+    private corners: [ReadonlyVec2, ReadonlyVec2, ReadonlyVec2, ReadonlyVec2];
+    private y_range: [number, number];
+
+    constructor(entity: rust.Redline.EntityQuadrant, _assets: AssetManager) {
+        this.center = correct_pos(entity.pos);
+        this.corners = entity.corners!;
+        this.y_range = entity.y_range!;
+    }
+
+    private calc_point(v2: ReadonlyVec2, a: number): vec3 {
+        return vec3.fromValues(this.center[0] + v2[0], this.center[1] + a, this.center[2] + v2[1]);
+    }
+
+    public render(renderer: RedlineRenderer, inst: RedlineRenderInstList, viewerInput: ViewerRenderInput): void {
+        if (!renderer.showQuads) return;
+        for (const y of this.y_range) {
+            renderer.renderHelper.debugDraw.drawRectLineP(
+                this.calc_point(this.corners[0], y), 
+                this.calc_point(this.corners[1], y),
+                this.calc_point(this.corners[2], y),
+                this.calc_point(this.corners[3], y),
+                Color.Magenta
+            );
+        }
+
+        for (const xz of this.corners) {
+            renderer.renderHelper.debugDraw.drawLine(
+                this.calc_point(xz, this.y_range[0]),
+                this.calc_point(xz, this.y_range[1]),
+                Color.Magenta
+            );
+        }
     }
 }

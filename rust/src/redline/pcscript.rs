@@ -85,26 +85,46 @@ pub enum ScriptVersion {
 
 #[non_exhaustive]
 #[allow(unused)]
-enum ScriptType {
-    Car = 0x0,
+enum ScriptKind {
+    Cars = 0x0,
     Sky = 0x1,
-    AI = 0x3,     // Foot or Car
-    Weapon = 0x6, // Unverified
-    Person = 0x7,
-    Projectile = 0x8, // Unverified - very uncertain
-    Object = 0x9,
+    Includes = 0x2,
+    AIs = 0x3, // Foot or Car
+    Surfaces = 0x4,
+    Impacts = 0x5,
+    Weapons = 0x6, // Unverified
+    Persons = 0x7,
+    Projectiles = 0x8, // Unverified - very uncertain
+    Objects = 0x9,
+    Dashboard = 0xA,
+    Instruments = 0xB,
     AnimDesc = 0xC,
-    SFX = 0xE,
-    Sprite = 0xF,
-    EmitterArray = 0x11,
-    Emitter = 0x12,
-    SubEmitter = 0x13,
-    CarCollision = 0x14, // Unverified - Car collision spin/elasticity
+    SoundLists = 0xD,
+    Sounds = 0xE,
+    Particles = 0xF,
+    EventSequenceList = 0x10,
+    EmitterArray = 0x11, // EventSequences
+    Emitter = 0x12,      // EventFrames
+    SubEmitter = 0x13,   // Events
+    MiscData = 0x14,
+    Blasts = 0x15,
+    Trails = 0x16,
     Item = 0x17,
+    Light = 0x18,
+    GeneralFloat = 0x19,
+    Motion = 0x1A,
+    DamageState = 0x1B,
+    Bushes = 0x1C,
+    // Unhandled = 0x1D
+    Critter = 0x1E,
+    CritterStateWander = 0x1F,
+    CritterStateRest = 0x20,
+    CritterStateHit = 0x21,
+    CritterStateFlee = 0x22,
+    CritterStateAttack = 0x23,
+    CritterStateFollow = 0x24,
+    CritterStateMerge = 0x25,
     CameraShake = 0x26,
-
-    // Default for unknown script types. Valid are 0x00-0x26
-    Unknown = 0xFF,
 }
 
 // Handler method pointers are stored at 0x5CC794 + (id * 8).
@@ -549,7 +569,7 @@ impl PCScript {
 
     #[wasm_bindgen(unchecked_return_type = "Redline.ScriptObject | undefined")]
     pub fn lookup_object(&self, name: &str) -> JsValue {
-        if let Some(section) = &self.sections[ScriptType::Object as usize] {
+        if let Some(section) = &self.sections[ScriptKind::Objects as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = Object::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
@@ -562,7 +582,7 @@ impl PCScript {
 
     #[wasm_bindgen(unchecked_return_type = "Redline.ScriptItem | undefined")]
     pub fn lookup_item(&self, name: &str) -> JsValue {
-        if let Some(section) = &self.sections[ScriptType::Item as usize] {
+        if let Some(section) = &self.sections[ScriptKind::Item as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = Item::from_reader_with_ctx(
                     &mut Reader::new(&mut Cursor::new(&section.entries[*idx].data)),
@@ -577,7 +597,7 @@ impl PCScript {
 
     #[wasm_bindgen(unchecked_return_type = "Redline.ScriptAnimDesc | undefined")]
     pub fn lookup_animdesc(&self, name: &str) -> JsValue {
-        if let Some(section) = &self.sections[ScriptType::AnimDesc as usize] {
+        if let Some(section) = &self.sections[ScriptKind::AnimDesc as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = AnimDesc::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
@@ -590,7 +610,7 @@ impl PCScript {
 
     #[wasm_bindgen(unchecked_return_type = "Redline.ScriptSky | undefined")]
     pub fn lookup_sky(&self, name: &str) -> JsValue {
-        if let Some(section) = &self.sections[ScriptType::Sky as usize] {
+        if let Some(section) = &self.sections[ScriptKind::Sky as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = Sky::from_bytes((&section.entries[*idx].data, 0)).unwrap().1;
                 return serde_wasm_bindgen::to_value(&script).unwrap();
@@ -601,7 +621,7 @@ impl PCScript {
 
     #[wasm_bindgen(unchecked_return_type = "Redline.ScriptSprite | undefined")]
     pub fn lookup_sprite(&self, name: &str) -> JsValue {
-        if let Some(section) = &self.sections[ScriptType::Sprite as usize] {
+        if let Some(section) = &self.sections[ScriptKind::Particles as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let script = Sprite::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
@@ -614,7 +634,7 @@ impl PCScript {
 
     #[wasm_bindgen(unchecked_return_type = "Redline.ScriptEmitterArray | undefined")]
     pub fn lookup_emitter_array(&self, name: &str) -> JsValue {
-        if let Some(section) = &self.sections[ScriptType::EmitterArray as usize] {
+        if let Some(section) = &self.sections[ScriptKind::EmitterArray as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let mut script = EmitterArray::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
@@ -629,7 +649,7 @@ impl PCScript {
 
     #[wasm_bindgen(unchecked_return_type = "Redline.ScriptEmitter | undefined")]
     pub fn lookup_emitter(&self, name: &str) -> JsValue {
-        if let Some(section) = &self.sections[ScriptType::Emitter as usize] {
+        if let Some(section) = &self.sections[ScriptKind::Emitter as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let mut script = Emitter::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
@@ -647,7 +667,7 @@ impl PCScript {
 
     #[wasm_bindgen(unchecked_return_type = "Redline.ScriptSubEmitter | undefined")]
     pub fn lookup_subemitter(&self, name: &str) -> JsValue {
-        if let Some(section) = &self.sections[ScriptType::SubEmitter as usize] {
+        if let Some(section) = &self.sections[ScriptKind::SubEmitter as usize] {
             if let Some(idx) = section.lookup_map.get(name) {
                 let mut script = SubEmitter::from_bytes((&section.entries[*idx].data, 0))
                     .unwrap()
