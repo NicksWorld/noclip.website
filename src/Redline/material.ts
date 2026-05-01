@@ -40,16 +40,20 @@ export class Texture {
         const height = r.readUint16();
         const width = r.readUint16();
         const bpp = r.readUint16();
-        const _unk = r.readUint16();
+        const palette_size = r.readUint16();
         let mips = r.readUint16();
 
-        if (mips == 0 || _unk != 256) {
-            mips = 1; // Mip reading is broken when _unk isn't 256
+        if (mips == 0) {
+            mips = 1;
         }
 
         const palette = [];
         if (bpp == 8) { // Uses palette
             for (let i = 0; i < 256; i++) {
+                if (i >= palette_size) {
+                    palette.push([i, i, i]);
+                    continue;
+                }
                 // Convert to RGB
                 const blue = r.readUint8();
                 const green = r.readUint8();
@@ -67,7 +71,6 @@ export class Texture {
 
             let size = (bpp / 8) * mip_width * mip_height;
 
-            if (name == "railbtm2.btf") continue; // Corrupt texture?
             let buffer = new Uint8Array(mip_width * mip_height * (bpp == 32 ? 4 : 3));
             let slice = r.readSlice(size).createTypedArray(Uint8Array);
 
